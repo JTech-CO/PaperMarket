@@ -1,0 +1,149 @@
+{
+  "verification": "Payload fixture visual QA only. No live Discord credentials or delivery.",
+  "files": [
+    {
+      "name": "company-ex-dark-mobile.png",
+      "bytes": 73890,
+      "width": 390,
+      "height": 1055,
+      "sha256": "b204758ad802950ca8b4e47fcbb97b9bccad4ae2d63c9e33df526b1fa7863efd",
+      "description": "Synthetic DTO through production renderer. Mobile payload QA; live Discord client not exercised."
+    },
+    {
+      "name": "company-ex-dark-desktop.png",
+      "bytes": 82930,
+      "width": 850,
+      "height": 866,
+      "sha256": "046c251564636484016efee49a776d36b1c86f2482b888db616b38134418e23a",
+      "description": "Synthetic DTO through production renderer. Desktop payload QA; live Discord client not exercised."
+    },
+    {
+      "name": "company-ex-light-mobile.png",
+      "bytes": 72137,
+      "width": 390,
+      "height": 1055,
+      "sha256": "ca1835cfb199057a2936a2adef010c8beef82edc2c3c96358d675529692abd03",
+      "description": "Synthetic DTO through production renderer. Mobile payload QA; live Discord client not exercised."
+    },
+    {
+      "name": "company-ex-light-desktop.png",
+      "bytes": 81636,
+      "width": 850,
+      "height": 866,
+      "sha256": "bcfbf36bd3ddfe7bea837e052c429bbf9475875d888255e2fc1875e7b4631818",
+      "description": "Synthetic DTO through production renderer. Desktop payload QA; live Discord client not exercised."
+    },
+    {
+      "name": "company-retired-dark-mobile.png",
+      "bytes": 66490,
+      "width": 390,
+      "height": 959,
+      "sha256": "3d06913fdf3efb27dc26483e18ea65fdea9a04d395f7643cee931811e5089494",
+      "description": "Synthetic DTO through production renderer. Mobile payload QA; live Discord client not exercised."
+    },
+    {
+      "name": "company-retired-light-mobile.png",
+      "bytes": 64789,
+      "width": 390,
+      "height": 959,
+      "sha256": "f37b776f62416ea7662d0be2059b49516ef800847a120e767a72cb74d3453279",
+      "description": "Synthetic DTO through production renderer. Mobile payload QA; live Discord client not exercised."
+    },
+    {
+      "name": "financial-paused-dark-mobile.png",
+      "bytes": 61142,
+      "width": 390,
+      "height": 959,
+      "sha256": "69bbb8991c69d233c215adbe0a94db5d299baded0e3705e11aeaa1c982472ec0",
+      "description": "Synthetic DTO through production renderer. Mobile payload QA; live Discord client not exercised."
+    },
+    {
+      "name": "financial-paused-light-mobile.png",
+      "bytes": 59898,
+      "width": 390,
+      "height": 959,
+      "sha256": "fd346013f1bdeac1469f58283289bc4422784cdd4d07cd36a622bc55fa9dd6c1",
+      "description": "Synthetic DTO through production renderer. Mobile payload QA; live Discord client not exercised."
+    },
+    {
+      "name": "market-dark-mobile.png",
+      "bytes": 55201,
+      "width": 390,
+      "height": 1016,
+      "sha256": "be87b88bdb11d914341d500beec2a4736a2ed1e91469724a727b56e2119b6c95",
+      "description": "Synthetic DTO through production renderer. Mobile payload QA; live Discord client not exercised."
+    },
+    {
+      "name": "market-light-mobile.png",
+      "bytes": 54084,
+      "width": 390,
+      "height": 1016,
+      "sha256": "e4d0a54b692b88eb856b3a2c0f9bde53f4a8dd0b7a89367960037038a46dd6a9",
+      "description": "Synthetic DTO through production renderer. Mobile payload QA; live Discord client not exercised."
+    },
+    {
+      "name": "performance-dark-mobile.png",
+      "bytes": 81714,
+      "width": 390,
+      "height": 1064,
+      "sha256": "0954b9b46e2be6fb7a3c4077ead98663c67f97bd9eaf21f932a392da33f0ea1e",
+      "description": "Synthetic DTO through production renderer. Mobile payload QA; live Discord client not exercised."
+    },
+    {
+      "name": "performance-light-mobile.png",
+      "bytes": 79641,
+      "width": 390,
+      "height": 1064,
+      "sha256": "78b43549c522301b108a91ef7bc8bfe706bdba0f7e2379ec35164ead703c7f8b",
+      "description": "Synthetic DTO through production renderer. Mobile payload QA; live Discord client not exercised."
+    },
+    {
+      "name": "stale-quote-dark-mobile.png",
+      "bytes": 15933,
+      "width": 390,
+      "height": 323,
+      "sha256": "631b67e19b000aea2f4aa8c33b26e9fa35be28ac760c7abf8faeb65af40728f4",
+      "description": "Synthetic DTO through production renderer. Mobile payload QA; live Discord client not exercised."
+    },
+    {
+      "name": "stale-quote-light-mobile.png",
+      "bytes": 15756,
+      "width": 390,
+      "height": 323,
+      "sha256": "ed8ef58092496297884c808ca584056d72d14bc30bd962ea37cbd27f249164ff",
+      "description": "Synthetic DTO through production renderer. Mobile payload QA; live Discord client not exercised."
+    },
+    {
+      "name": "chart-price-ex.png",
+      "bytes": 32612,
+      "width": 1000,
+      "height": 480,
+      "sha256": "bc8658b63d6c05650ebcce09f304344794f829afc16d149ede0c87135eaea553",
+      "description": "RVI 1세대 · 원가격 · 포인트 · 0~68틱 · 1000.00 → 985.00 · −1.50% · 선형축 · 버전 69"
+    },
+    {
+      "name": "chart-total-return.png",
+      "bytes": 37283,
+      "width": 1000,
+      "height": 480,
+      "sha256": "3a01c654dec2e73a932a8212953dc88dda9e45e5797990a5ed8240cc6fde23c5",
+      "description": "RVI 1세대 · 배당 포함 1주 총가치 · 포인트 · 0~68틱 · 1000.00 → 1000.00 · 보합 0.00% · 선형축 · 버전 69"
+    },
+    {
+      "name": "chart-retired-log.png",
+      "bytes": 33964,
+      "width": 1000,
+      "height": 480,
+      "sha256": "0e87fa6a8ee44c8a2f39391b65dd019853ceef1ac9e5fb1055e6337ceba48247",
+      "description": "RVI 1세대 · 원가격 · 포인트 · 0~68틱 · 1000.00 → 0.00 · −100.00% · 로그축 · 버전 69"
+    },
+    {
+      "name": "chart-extreme-linear.png",
+      "bytes": 24937,
+      "width": 1000,
+      "height": 480,
+      "sha256": "0a0f8206ab2cc4d40fa98c02efc206814a097e11316258ae5113f65b4900271b",
+      "description": "RVI 1세대 · 원가격 · 포인트 · 0~1틱 · 1e-60 → 2e-60 · +100.00% · 선형축 · 버전 69"
+    }
+  ]
+}

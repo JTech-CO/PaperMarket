@@ -1,0 +1,17 @@
+{
+  "milestone": 6,
+  "measurementArtifact": "load-10m-1000a-50b-20261008173629078.json",
+  "measurementModified": false,
+  "sourceCandidate": "Guarded benchmark validation cache and 60-second worker startup limit",
+  "standaloneProfileClaim": false,
+  "knownConcurrentWork": [
+    {
+      "kind": "LOCAL_BACKUP_FAULT_TEST_SUITE",
+      "reportedSuiteDurationMs": 61090,
+      "reportedHeavyCaseDurationMs": 52900,
+      "reportedOverlap": "The coordinating agent reported backup tests overlapped initial account preparation, including the first 250 opens, and subsequently reported that suite complete.",
+      "exactPerPhaseOverlap": "NOT_INDEPENDENTLY_INSTRUMENTED"
+    }
+  ],
+  "interpretation": "This attempt remains PROFILE_TARGET_MISSED. The measured 18.889-second all-market tick p95 and failed 60-second history-depth-3 cold restart are retained as failures. Warm command timings are recorded observations, and are not asserted to come from a fully isolated host. No latency target or failure count was changed after measurement."
+}

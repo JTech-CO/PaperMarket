@@ -1,0 +1,46 @@
+{
+  "name": "papermarket-discord",
+  "version": "0.5.0",
+  "private": true,
+  "description": "경제 기반 Discord 모의투자 시뮬레이터",
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "prebuild": "node scripts/check-runtime.mjs",
+    "pretypecheck": "node scripts/check-runtime.mjs",
+    "clean": "node scripts/clean.mjs",
+    "build": "npm run clean && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "check": "npm run typecheck && npm test",
+    "verify:foundation": "npm run build && node dist/src/diagnostics/verify-foundation.js",
+    "verify:broker": "npm run build && node dist/src/diagnostics/verify-broker.js",
+    "verify:economy": "npm run build && node dist/src/diagnostics/verify-economy.js",
+    "verify:actions": "npm run build && node dist/src/diagnostics/verify-actions.js",
+    "verify:orders": "npm run build && node dist/src/diagnostics/verify-orders.js",
+    "verify:events": "npm run build && node dist/src/diagnostics/verify-events.js",
+    "verify:load": "npm run build && node dist/src/diagnostics/verify-load.js",
+    "verify:recovery": "npm run build && node dist/src/diagnostics/verify-recovery.js",
+    "verify:model": "npm run build && node dist/src/diagnostics/verify-model.js",
+    "backup": "npm run build && node --env-file-if-exists=.env dist/src/ops/backup-cli.js",
+    "health:check": "npm run build && node --env-file-if-exists=.env dist/src/diagnostics/verify-operations.js",
+    "start": "npm run build && node --env-file-if-exists=.env dist/src/runtime/main.js",
+    "register:commands": "npm run build && node --env-file-if-exists=.env dist/src/runtime/register.js",
+    "config:check": "npm run build && node --env-file-if-exists=.env dist/src/runtime/check-config.js",
+    "audit:dependencies": "npm audit --omit=dev"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "2.6.2",
+    "better-sqlite3": "13.0.3",
+    "decimal.js": "10.6.0",
+    "discord.js": "14.27.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "24.19.1",
+    "typescript": "6.0.3"
+  }
+}

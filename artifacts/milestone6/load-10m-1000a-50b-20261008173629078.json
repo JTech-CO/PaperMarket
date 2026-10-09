@@ -1,0 +1,825 @@
+{
+  "milestone": 6,
+  "profile": {
+    "markets": 10,
+    "accounts": 1000,
+    "burst": 50,
+    "rounds": 3,
+    "ticks": 3,
+    "historyRecords": 10000,
+    "projectionVolume": true
+  },
+  "result": "PROFILE_TARGET_MISSED",
+  "measuredTargetsPassed": false,
+  "startedAt": "2026-10-08T17:36:29.078Z",
+  "hardware": {
+    "os": "win32 10.0.26200",
+    "architecture": "x64",
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13620H",
+    "logicalCpus": 16,
+    "memoryGiB": 63.71,
+    "node": "v24.20.0",
+    "sqlite": "3.53.4",
+    "disk": "UNKNOWN"
+  },
+  "actual": {
+    "markets": 10,
+    "accounts": 1000,
+    "committedBoundaryRounds": 3,
+    "genuineHistoryTicksPerListing": 3,
+    "maximumHistoryTicksPerListing": 3,
+    "economicSnapshots": 40,
+    "publicPriceRows": 240,
+    "fills": 150,
+    "grants": 1000
+  },
+  "logicalClock": {
+    "accelerated": true,
+    "restartOffsetMs": 811676,
+    "queryHistoryDepth": 3
+  },
+  "coverage": {
+    "liveDiscord": "NOT_RUN",
+    "fullWhitepaperHistoryProfile": "NOT_RUN",
+    "note": "Warm queries, financial commands and the first cold restart use actual wall time at history depth 0. Scheduled boundaries attempt genuine economic advancement; actual reports committed counts, and failed startup/tick/query attempts remain failures. A second cold restart follows the committed checkpoint with a validation-only clock offset and attempts portfolio queries at the reported history depth; timestamps and journals are never rewritten. This is not wall-clock history generation. The production 10,000-tick history profile and live Discord are not run; synthetic volume rows are separate. Disk model/type/speed: UNKNOWN (not measured)."
+  },
+  "measurements": {
+    "startup": {
+      "expected": 1,
+      "succeeded": 1,
+      "failed": 0,
+      "outcomes": {
+        "RECOVERED": 1
+      },
+      "failureRatePercent": 0,
+      "busyRatePercent": 0,
+      "all": {
+        "samples": 1,
+        "minMs": 323.2195999999999,
+        "medianMs": 323.2195999999999,
+        "p95Ms": 323.2195999999999,
+        "p99Ms": 323.2195999999999,
+        "maxMs": 323.2195999999999
+      },
+      "successes": {
+        "samples": 1,
+        "minMs": 323.2195999999999,
+        "medianMs": 323.2195999999999,
+        "p95Ms": 323.2195999999999,
+        "p99Ms": 323.2195999999999,
+        "maxMs": 323.2195999999999
+      },
+      "targetMs": null,
+      "passed": true
+    },
+    "setup": {
+      "expected": 10,
+      "succeeded": 10,
+      "failed": 0,
+      "outcomes": {
+        "SETUP": 10
+      },
+      "failureRatePercent": 0,
+      "busyRatePercent": 0,
+      "all": {
+        "samples": 10,
+        "minMs": 182.65790000000015,
+        "medianMs": 190.21640000000025,
+        "p95Ms": 264.29269999999997,
+        "p99Ms": 264.29269999999997,
+        "maxMs": 264.29269999999997
+      },
+      "successes": {
+        "samples": 10,
+        "minMs": 182.65790000000015,
+        "medianMs": 190.21640000000025,
+        "p95Ms": 264.29269999999997,
+        "p99Ms": 264.29269999999997,
+        "maxMs": 264.29269999999997
+      },
+      "targetMs": null,
+      "passed": true
+    },
+    "open": {
+      "expected": 1000,
+      "succeeded": 1000,
+      "failed": 0,
+      "outcomes": {
+        "ACCOUNT": 1000
+      },
+      "failureRatePercent": 0,
+      "busyRatePercent": 0,
+      "all": {
+        "samples": 1000,
+        "minMs": 24.746099999999842,
+        "medianMs": 579.9936000000016,
+        "p95Ms": 1098.187899999999,
+        "p99Ms": 1163.4012000000002,
+        "maxMs": 1319.6553999999996
+      },
+      "successes": {
+        "samples": 1000,
+        "minMs": 24.746099999999842,
+        "medianMs": 579.9936000000016,
+        "p95Ms": 1098.187899999999,
+        "p99Ms": 1163.4012000000002,
+        "maxMs": 1319.6553999999996
+      },
+      "targetMs": 2000,
+      "passed": true
+    },
+    "queries": {
+      "expected": 150,
+      "succeeded": 150,
+      "failed": 0,
+      "outcomes": {
+        "PORTFOLIO": 150
+      },
+      "failureRatePercent": 0,
+      "busyRatePercent": 0,
+      "all": {
+        "samples": 150,
+        "minMs": 24.479999999999563,
+        "medianMs": 454.3533000000025,
+        "p95Ms": 848.3924000000006,
+        "p99Ms": 944.5570000000007,
+        "maxMs": 958.6896000000015
+      },
+      "successes": {
+        "samples": 150,
+        "minMs": 24.479999999999563,
+        "medianMs": 454.3533000000025,
+        "p95Ms": 848.3924000000006,
+        "p99Ms": 944.5570000000007,
+        "maxMs": 958.6896000000015
+      },
+      "targetMs": 2000,
+      "passed": true
+    },
+    "acknowledgements": {
+      "expected": 50,
+      "succeeded": 50,
+      "failed": 0,
+      "outcomes": {
+        "RECOVERED": 50
+      },
+      "failureRatePercent": 0,
+      "busyRatePercent": 0,
+      "all": {
+        "samples": 50,
+        "minMs": 0.0036000000000058208,
+        "medianMs": 0.004099999998288695,
+        "p95Ms": 0.013199999997596024,
+        "p99Ms": 0.43620000000009895,
+        "maxMs": 0.43620000000009895
+      },
+      "successes": {
+        "samples": 50,
+        "minMs": 0.0036000000000058208,
+        "medianMs": 0.004099999998288695,
+        "p95Ms": 0.013199999997596024,
+        "p99Ms": 0.43620000000009895,
+        "maxMs": 0.43620000000009895
+      },
+      "targetMs": 1000,
+      "passed": true
+    },
+    "acknowledgedQueries": {
+      "expected": 50,
+      "succeeded": 50,
+      "failed": 0,
+      "outcomes": {
+        "PORTFOLIO": 50
+      },
+      "failureRatePercent": 0,
+      "busyRatePercent": 0,
+      "all": {
+        "samples": 50,
+        "minMs": 21.800500000001193,
+        "medianMs": 397.4435999999987,
+        "p95Ms": 750.2392,
+        "p99Ms": 782.8889000000017,
+        "maxMs": 782.8889000000017
+      },
+      "successes": {
+        "samples": 50,
+        "minMs": 21.800500000001193,
+        "medianMs": 397.4435999999987,
+        "p95Ms": 750.2392,
+        "p99Ms": 782.8889000000017,
+        "maxMs": 782.8889000000017
+      },
+      "targetMs": 2000,
+      "passed": true
+    },
+    "quotes": {
+      "expected": 150,
+      "succeeded": 150,
+      "failed": 0,
+      "outcomes": {
+        "QUOTE": 150
+      },
+      "failureRatePercent": 0,
+      "busyRatePercent": 0,
+      "all": {
+        "samples": 150,
+        "minMs": 18.394899999999325,
+        "medianMs": 389.56289999999717,
+        "p95Ms": 739.8539999999994,
+        "p99Ms": 770.606200000002,
+        "maxMs": 785.3263999999981
+      },
+      "successes": {
+        "samples": 150,
+        "minMs": 18.394899999999325,
+        "medianMs": 389.56289999999717,
+        "p95Ms": 739.8539999999994,
+        "p99Ms": 770.606200000002,
+        "maxMs": 785.3263999999981
+      },
+      "targetMs": 2000,
+      "passed": true
+    },
+    "financialCommits": {
+      "expected": 150,
+      "succeeded": 150,
+      "failed": 0,
+      "outcomes": {
+        "FILLED": 150
+      },
+      "failureRatePercent": 0,
+      "busyRatePercent": 0,
+      "all": {
+        "samples": 150,
+        "minMs": 19.718000000000757,
+        "medianMs": 430.842099999998,
+        "p95Ms": 805.4010000000017,
+        "p99Ms": 836.7298999999985,
+        "maxMs": 854.8961000000018
+      },
+      "successes": {
+        "samples": 150,
+        "minMs": 19.718000000000757,
+        "medianMs": 430.842099999998,
+        "p95Ms": 805.4010000000017,
+        "p99Ms": 836.7298999999985,
+        "maxMs": 854.8961000000018
+      },
+      "targetMs": 2000,
+      "passed": true
+    },
+    "duplicateConfirms": {
+      "expected": 150,
+      "succeeded": 150,
+      "failed": 0,
+      "outcomes": {
+        "FILLED": 150
+      },
+      "failureRatePercent": 0,
+      "busyRatePercent": 0,
+      "all": {
+        "samples": 150,
+        "minMs": 25.629799999998795,
+        "medianMs": 393.743400000003,
+        "p95Ms": 732.4245999999985,
+        "p99Ms": 778.3863999999994,
+        "maxMs": 792.3780000000006
+      },
+      "successes": {
+        "samples": 150,
+        "minMs": 25.629799999998795,
+        "medianMs": 393.743400000003,
+        "p95Ms": 732.4245999999985,
+        "p99Ms": 778.3863999999994,
+        "maxMs": 792.3780000000006
+      },
+      "targetMs": 2000,
+      "passed": true
+    },
+    "allMarketTicks": {
+      "expected": 3,
+      "succeeded": 3,
+      "failed": 0,
+      "outcomes": {
+        "TICKED": 3
+      },
+      "failureRatePercent": 0,
+      "busyRatePercent": 0,
+      "all": {
+        "samples": 3,
+        "minMs": 12603.7889,
+        "medianMs": 17855.68,
+        "p95Ms": 18888.948099999994,
+        "p99Ms": 18888.948099999994,
+        "maxMs": 18888.948099999994
+      },
+      "successes": {
+        "samples": 3,
+        "minMs": 12603.7889,
+        "medianMs": 17855.68,
+        "p95Ms": 18888.948099999994,
+        "p99Ms": 18888.948099999994,
+        "maxMs": 18888.948099999994
+      },
+      "targetMs": 5000,
+      "passed": false
+    },
+    "reopen": {
+      "expected": 1,
+      "succeeded": 1,
+      "failed": 0,
+      "outcomes": {
+        "RECOVERED": 1
+      },
+      "failureRatePercent": 0,
+      "busyRatePercent": 0,
+      "all": {
+        "samples": 1,
+        "minMs": 12305.227099999996,
+        "medianMs": 12305.227099999996,
+        "p95Ms": 12305.227099999996,
+        "p99Ms": 12305.227099999996,
+        "maxMs": 12305.227099999996
+      },
+      "successes": {
+        "samples": 1,
+        "minMs": 12305.227099999996,
+        "medianMs": 12305.227099999996,
+        "p95Ms": 12305.227099999996,
+        "p99Ms": 12305.227099999996,
+        "maxMs": 12305.227099999996
+      },
+      "targetMs": null,
+      "passed": true
+    },
+    "reopenMarketReads": {
+      "expected": 10,
+      "succeeded": 10,
+      "failed": 0,
+      "outcomes": {
+        "MARKET": 10
+      },
+      "failureRatePercent": 0,
+      "busyRatePercent": 0,
+      "all": {
+        "samples": 10,
+        "minMs": 36.33129999999801,
+        "medianMs": 39.12689999999566,
+        "p95Ms": 318.04089999999997,
+        "p99Ms": 318.04089999999997,
+        "maxMs": 318.04089999999997
+      },
+      "successes": {
+        "samples": 10,
+        "minMs": 36.33129999999801,
+        "medianMs": 39.12689999999566,
+        "p95Ms": 318.04089999999997,
+        "p99Ms": 318.04089999999997,
+        "maxMs": 318.04089999999997
+      },
+      "targetMs": 2000,
+      "passed": true
+    },
+    "postRestartQueries": {
+      "expected": 50,
+      "succeeded": 50,
+      "failed": 0,
+      "outcomes": {
+        "PORTFOLIO": 50
+      },
+      "failureRatePercent": 0,
+      "busyRatePercent": 0,
+      "all": {
+        "samples": 50,
+        "minMs": 18.677999999999884,
+        "medianMs": 407.67719999999827,
+        "p95Ms": 800.1627999999982,
+        "p99Ms": 834.2683000000034,
+        "maxMs": 834.2683000000034
+      },
+      "successes": {
+        "samples": 50,
+        "minMs": 18.677999999999884,
+        "medianMs": 407.67719999999827,
+        "p95Ms": 800.1627999999982,
+        "p99Ms": 834.2683000000034,
+        "maxMs": 834.2683000000034
+      },
+      "targetMs": 2000,
+      "passed": true
+    },
+    "historyReopen": {
+      "expected": 1,
+      "succeeded": 0,
+      "failed": 1,
+      "outcomes": {
+        "ERROR:INTERNAL_ERROR": 1
+      },
+      "failureRatePercent": 100,
+      "busyRatePercent": 0,
+      "all": {
+        "samples": 1,
+        "minMs": 60029.21620000001,
+        "medianMs": 60029.21620000001,
+        "p95Ms": 60029.21620000001,
+        "p99Ms": 60029.21620000001,
+        "maxMs": 60029.21620000001
+      },
+      "successes": {
+        "samples": 0,
+        "minMs": null,
+        "medianMs": null,
+        "p95Ms": null,
+        "p99Ms": null,
+        "maxMs": null
+      },
+      "targetMs": null,
+      "passed": false
+    },
+    "historyQueries": {
+      "expected": 50,
+      "succeeded": 0,
+      "failed": 50,
+      "outcomes": {
+        "ERROR:INTERNAL_ERROR": 50
+      },
+      "failureRatePercent": 100,
+      "busyRatePercent": 0,
+      "all": {
+        "samples": 50,
+        "minMs": 0.22070000000530854,
+        "medianMs": 0.3147999999928288,
+        "p95Ms": 0.39830000000074506,
+        "p99Ms": 0.40670000002137385,
+        "maxMs": 0.40670000002137385
+      },
+      "successes": {
+        "samples": 0,
+        "minMs": null,
+        "medianMs": null,
+        "p95Ms": null,
+        "p99Ms": null,
+        "maxMs": null
+      },
+      "targetMs": 2000,
+      "passed": false
+    }
+  },
+  "worker": {
+    "setup": {
+      "observations": 10,
+      "service": {
+        "samples": 10,
+        "minMs": 180.1800000000003,
+        "medianMs": 189.96000000000004,
+        "p95Ms": 262.4541999999999,
+        "p99Ms": 262.4541999999999,
+        "maxMs": 262.4541999999999
+      },
+      "queueAndTransport": {
+        "samples": 10,
+        "minMs": 0.2053000000000793,
+        "medianMs": 0.30740000000014334,
+        "p95Ms": 2.4578999999994267,
+        "p99Ms": 2.4578999999994267,
+        "maxMs": 2.4578999999994267
+      },
+      "roundtrip": {
+        "samples": 10,
+        "minMs": 182.63789999999972,
+        "medianMs": 190.19410000000016,
+        "p95Ms": 264.1841999999999,
+        "p99Ms": 264.1841999999999,
+        "maxMs": 264.1841999999999
+      },
+      "maxPending": 0,
+      "gateRejected": 0,
+      "errors": 0,
+      "integrityFailures": 0
+    },
+    "open": {
+      "observations": 1000,
+      "service": {
+        "samples": 1000,
+        "minMs": 18.082699999999022,
+        "medianMs": 21.64719999999943,
+        "p95Ms": 27.70100000000093,
+        "p99Ms": 33.91730000000007,
+        "maxMs": 111.70069999999942
+      },
+      "queueAndTransport": {
+        "samples": 1000,
+        "minMs": 0.27529999999978827,
+        "medianMs": 557.8967999999986,
+        "p95Ms": 1075.0987000000005,
+        "p99Ms": 1132.3950000000004,
+        "maxMs": 1299.1373999999996
+      },
+      "roundtrip": {
+        "samples": 1000,
+        "minMs": 24.7190999999998,
+        "medianMs": 579.9847000000009,
+        "p95Ms": 1098.1772999999994,
+        "p99Ms": 1163.3894,
+        "maxMs": 1319.6415000000015
+      },
+      "maxPending": 49,
+      "gateRejected": 0,
+      "errors": 0,
+      "integrityFailures": 0
+    },
+    "queries": {
+      "observations": 150,
+      "service": {
+        "samples": 150,
+        "minMs": 13.71270000000004,
+        "medianMs": 14.898700000001554,
+        "p95Ms": 19.21140000000014,
+        "p99Ms": 74.63719999999739,
+        "maxMs": 97.81549999999697
+      },
+      "queueAndTransport": {
+        "samples": 150,
+        "minMs": 4.727100000000064,
+        "medianMs": 436.23919999999634,
+        "p95Ms": 830.8721000000041,
+        "p99Ms": 926.9304999999986,
+        "maxMs": 944.5779000000002
+      },
+      "roundtrip": {
+        "samples": 150,
+        "minMs": 24.46719999999914,
+        "medianMs": 454.3337999999967,
+        "p95Ms": 848.3816000000006,
+        "p99Ms": 944.5465999999979,
+        "maxMs": 958.6801000000014
+      },
+      "maxPending": 49,
+      "gateRejected": 0,
+      "errors": 0,
+      "integrityFailures": 0
+    },
+    "acknowledgedQueries": {
+      "observations": 50,
+      "service": {
+        "samples": 50,
+        "minMs": 13.937299999997776,
+        "medianMs": 14.633499999999913,
+        "p95Ms": 18.4359000000004,
+        "p99Ms": 19.605100000000675,
+        "maxMs": 19.605100000000675
+      },
+      "queueAndTransport": {
+        "samples": 50,
+        "minMs": 2.1766999999999825,
+        "medianMs": 379.91709999999875,
+        "p95Ms": 736.0625,
+        "p99Ms": 768.7491999999984,
+        "maxMs": 768.7491999999984
+      },
+      "roundtrip": {
+        "samples": 50,
+        "minMs": 21.781800000000658,
+        "medianMs": 397.4334999999992,
+        "p95Ms": 750.2309000000023,
+        "p99Ms": 782.879399999998,
+        "maxMs": 782.879399999998
+      },
+      "maxPending": 49,
+      "gateRejected": 0,
+      "errors": 0,
+      "integrityFailures": 0
+    },
+    "quotes": {
+      "observations": 150,
+      "service": {
+        "samples": 150,
+        "minMs": 13.095900000000256,
+        "medianMs": 14.280699999999342,
+        "p95Ms": 19.462500000001455,
+        "p99Ms": 20.893400000000838,
+        "maxMs": 22.834600000001956
+      },
+      "queueAndTransport": {
+        "samples": 150,
+        "minMs": 3.60830000000351,
+        "medianMs": 375.2885000000024,
+        "p95Ms": 725.6901999999973,
+        "p99Ms": 754.5224000000017,
+        "maxMs": 770.6139000000039
+      },
+      "roundtrip": {
+        "samples": 150,
+        "minMs": 18.384299999997893,
+        "medianMs": 389.5526000000027,
+        "p95Ms": 739.8445999999967,
+        "p99Ms": 770.5959000000003,
+        "maxMs": 785.3162999999986
+      },
+      "maxPending": 49,
+      "gateRejected": 0,
+      "errors": 0,
+      "integrityFailures": 0
+    },
+    "financialCommits": {
+      "observations": 150,
+      "service": {
+        "samples": 150,
+        "minMs": 14.364000000001397,
+        "medianMs": 15.486599999996542,
+        "p95Ms": 20.049400000003516,
+        "p99Ms": 23.935099999998783,
+        "maxMs": 24.960399999996298
+      },
+      "queueAndTransport": {
+        "samples": 150,
+        "minMs": 3.8892999999989115,
+        "medianMs": 415.54099999999744,
+        "p95Ms": 786.412900000003,
+        "p99Ms": 820.8632000000034,
+        "maxMs": 836.7592999999979
+      },
+      "roundtrip": {
+        "samples": 150,
+        "minMs": 19.707399999999325,
+        "medianMs": 430.8309999999983,
+        "p95Ms": 805.3866000000016,
+        "p99Ms": 836.7198000000026,
+        "maxMs": 854.8859000000011
+      },
+      "maxPending": 49,
+      "gateRejected": 0,
+      "errors": 0,
+      "integrityFailures": 0
+    },
+    "duplicateConfirms": {
+      "observations": 150,
+      "service": {
+        "samples": 150,
+        "minMs": 13.31590000000142,
+        "medianMs": 14.205300000001444,
+        "p95Ms": 18.38090000000375,
+        "p99Ms": 20.963899999995192,
+        "maxMs": 39.59700000000157
+      },
+      "queueAndTransport": {
+        "samples": 150,
+        "minMs": 6.031200000004901,
+        "medianMs": 379.15919999999824,
+        "p95Ms": 714.9560999999958,
+        "p99Ms": 764.2334999999985,
+        "maxMs": 778.2926000000007
+      },
+      "roundtrip": {
+        "samples": 150,
+        "minMs": 25.613600000000588,
+        "medianMs": 393.73349999999846,
+        "p95Ms": 732.4154999999955,
+        "p99Ms": 778.3686999999991,
+        "maxMs": 792.3685000000005
+      },
+      "maxPending": 49,
+      "gateRejected": 0,
+      "errors": 0,
+      "integrityFailures": 0
+    },
+    "reopenMarketReads": {
+      "observations": 10,
+      "service": {
+        "samples": 10,
+        "minMs": 35.002699999997276,
+        "medianMs": 37.427999999999884,
+        "p95Ms": 49.59919999999693,
+        "p99Ms": 49.59919999999693,
+        "maxMs": 49.59919999999693
+      },
+      "queueAndTransport": {
+        "samples": 10,
+        "minMs": 0.1936000000059721,
+        "medianMs": 1.6361000000033528,
+        "p95Ms": 275.54729999999836,
+        "p99Ms": 275.54729999999836,
+        "maxMs": 275.54729999999836
+      },
+      "roundtrip": {
+        "samples": 10,
+        "minMs": 36.320499999994354,
+        "medianMs": 39.112999999997555,
+        "p95Ms": 318.0202999999965,
+        "p99Ms": 318.0202999999965,
+        "maxMs": 318.0202999999965
+      },
+      "maxPending": 0,
+      "gateRejected": 0,
+      "errors": 0,
+      "integrityFailures": 0
+    },
+    "postRestartQueries": {
+      "observations": 50,
+      "service": {
+        "samples": 50,
+        "minMs": 14.11859999999433,
+        "medianMs": 15.508900000000722,
+        "p95Ms": 21.44640000000072,
+        "p99Ms": 22.949500000002445,
+        "maxMs": 22.949500000002445
+      },
+      "queueAndTransport": {
+        "samples": 50,
+        "minMs": 2.700700000001234,
+        "medianMs": 386.2205999999933,
+        "p95Ms": 785.4351000000024,
+        "p99Ms": 819.3360999999932,
+        "maxMs": 819.3360999999932
+      },
+      "roundtrip": {
+        "samples": 50,
+        "minMs": 18.661700000004203,
+        "medianMs": 407.666999999994,
+        "p95Ms": 800.154300000002,
+        "p99Ms": 834.2584999999963,
+        "maxMs": 834.2584999999963
+      },
+      "maxPending": 49,
+      "gateRejected": 0,
+      "errors": 0,
+      "integrityFailures": 0
+    },
+    "allMarketTicks": {
+      "observations": 3,
+      "service": {
+        "samples": 3,
+        "minMs": 12599.726999999999,
+        "medianMs": 17531.51090000001,
+        "p95Ms": 18583.33989999999,
+        "p99Ms": 18583.33989999999,
+        "maxMs": 18583.33989999999
+      },
+      "queueAndTransport": {
+        "samples": 3,
+        "minMs": 4.045700000002398,
+        "medianMs": 305.5962000000145,
+        "p95Ms": 324.15799999998853,
+        "p99Ms": 324.15799999998853,
+        "maxMs": 324.15799999998853
+      },
+      "roundtrip": {
+        "samples": 3,
+        "minMs": 12603.772700000001,
+        "medianMs": 17855.668899999997,
+        "p95Ms": 18888.936100000006,
+        "p99Ms": 18888.936100000006,
+        "maxMs": 18888.936100000006
+      },
+      "maxPending": 0,
+      "gateRejected": 0,
+      "errors": 0,
+      "integrityFailures": 0
+    }
+  },
+  "mockDeferHook": {
+    "samples": 50,
+    "minMs": 0.3518000000003667,
+    "medianMs": 0.45170000000143773,
+    "p95Ms": 0.5472000000008848,
+    "p99Ms": 0.5781999999999243,
+    "maxMs": 0.5781999999999243
+  },
+  "integrity": {
+    "ownerResponsesMatched": true,
+    "privateAcknowledgements": true,
+    "financialReplaysMatched": true,
+    "fillsEqualSuccessfulCommits": true,
+    "initialGrantsEqualOpenedAccounts": true,
+    "historyRoundsMatched": true,
+    "activeSlots": true,
+    "foreignKeys": true,
+    "quickCheck": true,
+    "reopenSucceeded": false
+  },
+  "projection": {
+    "kind": "SYNTHETIC_PUBLIC_PROJECTION_VOLUME",
+    "productionHistory": false,
+    "rows": 800000,
+    "markets": 10,
+    "listings": 80,
+    "recordsPerListing": 10000,
+    "insertedMs": 13571.983600000007,
+    "indexedQuery": {
+      "samples": 150,
+      "minMs": 0.7288000000116881,
+      "medianMs": 0.9054999999934807,
+      "p95Ms": 1.5005999999993946,
+      "p99Ms": 1.9223000000056345,
+      "maxMs": 2.2171999999845866
+    },
+    "queryPlan": [
+      "SEARCH synthetic_public_prices USING PRIMARY KEY (market_no=? AND listing_no=?)"
+    ],
+    "pngBytes": 57761,
+    "pngMs": 2099.536300000007,
+    "pngWidth": 1000,
+    "pngHeight": 480,
+    "note": "Separate synthetic projection table. This measures indexed row-volume queries and rendering, not the production economic-history read model or 10,000 genuine economic ticks."
+  }
+}

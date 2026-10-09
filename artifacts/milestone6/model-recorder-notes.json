@@ -1,0 +1,26 @@
+{
+  "milestone": 6,
+  "validationVersion": "model-validation-v1",
+  "corrections": [
+    {
+      "code": "OPENING_EQUITY_DRAWDOWN_OBSERVATION",
+      "description": "Include the exact post-buy tick-zero equity as a drawdown observation. Initial buy fees, prices, strategy decisions and financial checkpoint state were already exact and remain unchanged. Legacy summaries are accepted only when their sole difference is the previously omitted opening drawdown observation."
+    },
+    {
+      "code": "REPLACEMENT_RETURN_PARTIAL_RECORD",
+      "preset": "drift-pilot",
+      "seedId": "c000",
+      "replacementTick": 336,
+      "baseSymbol": "RVI",
+      "retainedCompletedTick": 393,
+      "retainedCheckpointHash": "99ff105179a64c2b4a89da585aa83a2e525aa42b56c926c1a8dcf5cd2ed3a95e",
+      "retainedChainHash": "bee6f28ca208a3444870a0ec76f1308d01144871c991bf0ed807e7f2dbd8e156",
+      "attemptedChunk": {"completedTicks":128,"recordedWallSeconds":45.1701123,"status":"RECORDER_RESUME_ERROR"},
+      "description": "The full engine committed an RVI replacement. The recorder correctly excluded its discontinuous return but its resume schema incorrectly required all eight symbol keys on every row. Corrected to a partial record; no zero return was inserted, no economic failure was declared, and no seed or financial checkpoint was replaced. The original checkpoint and error attempt evidence were retained."
+    }
+  ],
+  "economicsChanged": false,
+  "strategyParametersChanged": false,
+  "seedSelectionChanged": false,
+  "fullReferenceAndDriftExecution": "NOT_RUN"
+}
