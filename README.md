@@ -10,7 +10,9 @@
 
 가상 기업의 실적·금리·현금흐름·공시와 시장 기대로 움직이는 **Discord 모의투자 시뮬레이터**입니다. 혼자서도 계좌를 개설하고 투자 판단과 결과를 기록할 수 있습니다. 실제 자금·주식과 연결되지 않습니다.
 
-[소개 페이지 보기](https://jtech-co.github.io/PaperMarket/) · [단일 HTML 소스](index.html)
+[소개 페이지 보기](https://jtech-co.github.io/PaperMarket/) · [서버에 봇 추가](https://discord.com/oauth2/authorize?client_id=1555878043916959774&permissions=117760&integration_type=0&scope=bot%20applications.commands) · [단일 HTML 소스](index.html)
+
+서버 관리자는 봇을 추가한 뒤 `/setup channel:#시장`으로 현황판을 지정합니다. 참가자는 `/help`·`/privacy`를 확인하고 `/open`으로 시작합니다. 현재 봇은 실행 설정에서 지정한 서버 한 곳에 명령을 등록하고 처리하므로 설치 전에 운영자가 지원하는 서버인지 확인하세요.
 
 ## 구동 아키텍처
 
@@ -28,7 +30,7 @@ flowchart LR
 
 금융·경제 Worker가 시장 틱, 주문, 체결과 원장을 단일 작성자·트랜잭션으로 처리합니다. 확정된 결과를 Gateway가 비공개 응답·현황판·개인 알림으로 전달하고, 별도 Worker가 암호화 백업을 수행합니다.
 
-Node.js 24에서 [`.env.example`](.env.example)을 `.env`로 복사해 Discord 설정, 운영자 정보, 계좌 키·시장 시드·백업 키를 입력합니다. 등록과 이용 범위는 설정한 Discord 서버입니다. 자세한 설정·복구 절차는 [운영 안내](docs/OPERATIONS.md)에 있습니다.
+직접 구동하려면 Node.js 24에서 [`.env.example`](.env.example)을 `.env`로 복사해 본인 봇의 Discord 설정, 운영자 정보, 계좌 키·시장 시드·백업 키를 입력합니다. 자세한 설정·복구 절차는 [운영 안내](docs/OPERATIONS.md)에 있습니다.
 
 ```powershell
 npm ci --ignore-scripts
@@ -48,20 +50,24 @@ npm start
 | `/economy` | 가상 금리·경제지표·정책 전망 조회 |
 | `/financial symbol:HGI` | 공개 실적·현금흐름·시장 전망 조회 |
 | `/news`, `/calendar` | 공개 공시와 실적·배당·정책 일정 조회 |
-| `/chart symbol:HGI` | 원가격·배당 포함 총가치의 PNG 차트 조회 |
-| `/buy symbol:HGI budget:1000` | 수수료 포함 금액으로 소수점 매수 견적 확인. 수량·지정가도 지원 |
-| `/funding enabled:true` | 21틱마다 1,000포인트의 정기 투자금 납입 설정·다음 지급 조회 |
+| `/chart symbol:HGI` | 원가격·배당 포함 1주 총가치의 PNG 차트 조회 |
+| `/buy symbol:HGI budget:1000` | 수수료 포함 금액으로 소수점 매수 견적 확인. 가용 현금 비율·직접 수량·지정가도 지원 |
+| `/funding` | 정기 투자금의 활성 여부·다음 납입 틱·누적 납입액 조회 |
 | `/sell symbol:HGI quantity:1` | 시장가·지정가·스톱 매도 견적 확인 |
 | `/orders` | 본인의 미체결 주문·예약 자산 조회 및 취소 |
-| `/portfolio`, `/history` | 본인의 자산·손익과 거래·배당·이자 내역 조회 |
-| `/performance` | 납입금을 제외한 손익·시간가중 수익률·최대낙폭·같은 자금 흐름의 기준전략 비교 |
+| `/portfolio`, `/history` | 본인의 자산·손익과 거래·배당·이자·투자금 납입 내역 조회 |
+| `/performance` | 투자 손익·시간가중 수익률·최대낙폭과 CASH/HOLD8 기준전략 비교 |
 | `/alerts` | 관심 종목·가격 알림·알림함·선택 DM 관리 |
-| `/export format:CSV` | 본인 기록을 CSV 또는 JSON으로 내보내기 |
+| `/export format:CSV` | 본인의 거래·권리·성과·투자금 납입 기록을 CSV 또는 JSON으로 내보내기 |
 | `/help`, `/privacy` | 모의투자 규칙·약관·개인정보 처리 안내 |
 | `/close confirmed:true` | 계좌 이용 종료·ID 연결 제거, 금융 기록 보관 |
 
-매매는 견적을 확인한 뒤 확인 버튼으로 확정합니다. 지정가는 `order_type:LIMIT price:950`, 스톱 매도는 `order_type:STOP price:900`을 추가합니다. 개인 계좌·거래·성과 응답은 비공개입니다.
+매매는 견적을 확인한 뒤 확인 버튼으로 확정합니다. 시장가 매수는 `budget:1000`, `budget_percent:50`(25·50·100% 지원), `quantity:1` 중 하나를 선택합니다. 지정가는 `quantity:1 order_type:LIMIT price:950`, 스톱 매도는 `quantity:1 order_type:STOP price:900`을 사용합니다. 개인 계좌·거래·성과 응답은 비공개입니다.
 
-회사 화면의 금액 매수에서 1,000·5,000포인트와 가용 현금 비율을 선택할 수 있습니다. 정기 투자금은 계좌 개설 후 활성 시장 틱 기준으로 자동 납입되며 접속·채팅·거래 횟수와 관계없습니다. `/funding enabled:false`로 중단할 수 있습니다.
+회사 화면에서는 1,000·5,000포인트 또는 가용 현금 50%로 바로 매수 견적을 확인할 수 있습니다. 금액·비율 매수는 수수료를 포함하며 예약된 현금을 제외하고 소수점 6자리까지의 수량을 계산합니다.
+
+신규 계좌는 최초 10,000포인트를 받고, 개설 틱부터 활성 시장 21틱마다 1,000포인트의 정기 투자금이 기본 납입됩니다. 개인 접속·채팅·거래 여부와 관계없이 진행됩니다. `/funding enabled:false`로 중단하고 `/funding enabled:true`로 재활성화하면 현재 틱부터 새 주기를 시작하며, 중단한 기간의 몫은 소급 지급하지 않습니다.
+
+성과는 추가 납입금을 손익에서 제외하고 수익률·낙폭에서 납입 효과를 보정합니다. CASH/HOLD8에도 본인과 같은 시점·금액의 납입을 반영하며, HOLD8은 개설 때 8종목을 매수한 뒤 추가 납입금을 현금으로 보유합니다.
 
 [기술·디자인 백서](docs/PaperMarket_Technical_Whitepaper_KR.md) · [운영 안내](docs/OPERATIONS.md) · [정책 안내](docs/policy/README.md)
