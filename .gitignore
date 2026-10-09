@@ -15,5 +15,6 @@ backups/
 *.writer-lock.acquire
 *.log
 .runtime/
+artifacts/
 coverage/
 .vsf/

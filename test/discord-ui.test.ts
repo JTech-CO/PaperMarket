@@ -6,7 +6,7 @@ import { buildCommands, createInteractionHandler } from '../src/discord/index.js
 import { UI_COLORS, errorEmbed } from '../src/discord/messages.js';
 import { renderAlerts, renderBuyChoices, renderCalendar, renderExport, renderNews, renderPriceChart, renderServiceResponse, renderStock, type ReplyView } from '../src/discord/render.js';
 import { tradeModal } from '../src/discord/forms.js';
-import { visualQaFixtures } from '../src/charts/qa-fixtures.js';
+import { visualQaFixtures } from './helpers/visual-fixtures.js';
 
 const now = new Date('2026-10-05T12:00:00.000Z');
 const operator = { operatorName: 'PaperMarket tests', supportContact: 'support@example.com' };
@@ -46,7 +46,7 @@ function backend(response: ServiceResponse = { kind: 'STOCK', stock }) {
   return { requests, value: { async execute(request: ServiceRequest) { requests.push(request); return response; } } satisfies Backend };
 }
 
-test('milestone5 commands are guild-only and contain bounded options and canonical company name', () => {
+test('commands are guild-only and contain bounded options and canonical company name', () => {
   const commands = buildCommands().map((command) => command.toJSON());
   assert.equal(commands.length, 22); assert.equal(new Set(commands.map((command) => command.name)).size, commands.length);
   for (const name of ['company', 'news', 'calendar', 'chart', 'performance', 'export', 'alerts']) assert.ok(commands.some((command) => command.name === name));

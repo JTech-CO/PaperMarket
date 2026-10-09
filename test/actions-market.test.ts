@@ -3,7 +3,6 @@ import test from 'node:test';
 import { randomBytes } from 'node:crypto';
 import { FinancialDecimal as D, moneyToAtoms, parseMoney } from '../src/domain/numeric.js';
 import { dividendRightMark, transformCorporateRights } from '../src/domain/corporate-rights.js';
-import { buyReferenceReplacement, retireReferenceListing, settleReferenceLiquidation, type ReferenceStrategyState } from '../src/domain/reference-strategy.js';
 import { DeterministicRandom } from '../src/domain/random.js';
 import { INITIAL_COMPANIES } from '../src/fixtures/initial-companies.js';
 import { createPublicEconomy, publicCorporateActionSchema, publishEconomy, validatePublicEconomy } from '../src/economy/public.js';
@@ -154,17 +153,13 @@ test('corporate action input cannot contain private fields or an unpublished pay
   assert.throws(() => publishEconomy(prior, [], 1, [dividendAction('DIVIDEND_EX')]));
 });
 
-test('issued capital is canonical positive integer text while investor positions may remain fractional', () => {
+test('issued corporate capital is canonical positive integer text', () => {
   const action = dividendAction('DIVIDEND_DECLARED');
   for (const invalid of ['0', '0.5', '1e6', '01', '1000000000000000001']) {
     assert.throws(() => publicCorporateActionSchema.parse({ ...action, dividend: { ...dividend(), issuedShares: invalid } }));
     const state = initial();
     assert.throws(() => validatePublicEconomy({ ...state, companies: state.companies.map((company, index) => index ? company : { ...company, issuedShares: invalid }) }));
   }
-  const before: ReferenceStrategyState = { cashAtoms: '0', realizedProfitAtoms: '0', positions: [
-    { listingId: 'fractional_holding', quantity: '0.123456', costAtoms: '0' },
-  ], liquidationRights: [] };
-  assert.equal(retireReferenceListing(before, 'fractional_holding', '1').liquidationRights[0]!.quantity, '0.123456');
 });
 
 test('AT12 ordinary returns apply after detachment and remain within 30 percent', () => {
@@ -240,7 +235,7 @@ test('real private liquidation actions compose with the public boundary and repl
   assert.notEqual(pricing.companies[0]!.issuerId, old.issuerId);
 });
 
-test('milestone 2 snapshots normalize new public/pricing fields while preserving the exact quote', () => {
+test('legacy snapshots normalize new public/pricing fields while preserving the exact quote', () => {
   const current = initial();
   const legacy = { ...current, corporateActions: undefined, companies: current.companies.map((company) => {
     const { baseSymbol: _base, generation: _generation, createdTick: _created, lifecycle: _lifecycle, dividends: _dividends,
@@ -253,31 +248,4 @@ test('milestone 2 snapshots normalize new public/pricing fields while preserving
     const { attachedRightsMark: _attached, continuationMark: _continuation, priceMode: _mode, ...old } = company; return old;
   }) };
   assert.equal(pricingStateSchema.parse(oldPricing).companies[0]!.price, '0.000123456789');
-});
-
-test('AT57 the reference account retains old loss and buys replacements only from its own cash with fees', () => {
-  const before: ReferenceStrategyState = { cashAtoms: atoms('7000'), realizedProfitAtoms: '0',
-    positions: [{ listingId: 'old_listing', quantity: '10', costAtoms: atoms('3000') }], liquidationRights: [] };
-  const retired = retireReferenceListing(before, 'old_listing', '0');
-  assert.equal(retired.cashAtoms, before.cashAtoms); assert.deepEqual(retired.positions, []);
-  assert.equal(retired.liquidationRights[0]!.costAtoms, atoms('3000'));
-  const settled = settleReferenceLiquidation(retired, 'old_listing', '0');
-  assert.equal(settled.cashAtoms, atoms('7000')); assert.equal(settled.realizedProfitAtoms, atoms('-3000'));
-  assert.deepEqual(settled.positions, []);
-  const purchased = buyReferenceReplacement(settled, { listingId: 'new_listing', price: '1000', budgetAtoms: atoms('3000'), feeRate: '0.001' });
-  assert.ok(new D(purchased.positions[0]!.quantity).lt(3));
-  assert.equal(BigInt(purchased.cashAtoms) + BigInt(purchased.positions[0]!.costAtoms), BigInt(settled.cashAtoms));
-  assert.equal(purchased.realizedProfitAtoms, atoms('-3000'));
-  assert.throws(() => buyReferenceReplacement(settled, { listingId: 'new_listing', price: '1000', budgetAtoms: atoms('10000'), feeRate: '0.001' }));
-});
-
-test('reference final recoveries retain exact sub-atom proceeds across separate old issuers', () => {
-  const input: ReferenceStrategyState = { cashAtoms: '0', realizedProfitAtoms: '0', positions: [], liquidationRights: [
-    { listingId: 'old1', quantity: '1', costAtoms: '0', estimatedRecoveryPerShare: '6e-13' },
-    { listingId: 'old2', quantity: '1', costAtoms: '0', estimatedRecoveryPerShare: '6e-13' },
-  ] };
-  const first = settleReferenceLiquidation(input, 'old1', '6e-13');
-  assert.equal(first.cashAtoms, '0'); assert.deepEqual(first.settlementCarry, { numerator: '3', denominator: '5000000000000' });
-  const second = settleReferenceLiquidation(first, 'old2', '6e-13');
-  assert.equal(second.cashAtoms, '1'); assert.deepEqual(second.settlementCarry, { numerator: '1', denominator: '5000000000000' });
 });

@@ -25,7 +25,7 @@ import {correlation,distribution,modelReturnRowSchema,summarizeStatistics} from 
 import {STRATEGIES,buyTargets,executeStrategy,initialStrategies,strategyTarget} from '../src/validation/model/strategies.js';
 
 function temporary(t:TestContext):string {
-  const root=resolve('artifacts/milestone6');mkdirSync(root,{recursive:true});const directory=mkdtempSync(join(root,'.model-test-'));
+  const root=resolve('.runtime/test-fixtures/model');mkdirSync(root,{recursive:true});const directory=mkdtempSync(join(root,'.model-test-'));
   t.after(()=>{if(dirname(resolve(directory))!==root||!basename(directory).startsWith('.model-test-'))throw new Error('Unsafe test cleanup');rmSync(directory,{recursive:true,force:true});});return directory;
 }
 test('model presets preregister every calibration/holdout path and full drift scope',()=>{

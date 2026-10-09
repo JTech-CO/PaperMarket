@@ -1,9 +1,8 @@
-import type { FinancialView, MarketView, PerformanceView, StockView } from '../application/contracts.js';
-import type { BenchmarkView } from '../reporting/benchmark-types.js';
-import { INITIAL_COMPANIES } from '../fixtures/initial-companies.js';
-import { errorEmbed } from '../discord/messages.js';
-import { renderFinancial, renderMarket, renderPerformance, renderStock, replyView, type ReplyView } from '../discord/render.js';
-import type { PriceChartInput } from './render.js';
+import type { FinancialView, MarketView, PerformanceView, StockView } from '../../src/application/contracts.js';
+import type { BenchmarkView } from '../../src/reporting/benchmark-types.js';
+import { INITIAL_COMPANIES } from '../../src/fixtures/initial-companies.js';
+import { errorEmbed } from '../../src/discord/messages.js';
+import { renderFinancial, renderMarket, renderPerformance, renderStock, replyView, type ReplyView } from '../../src/discord/render.js';
 
 const at = '2026-10-09T00:00:00.000Z';
 const meta = { tickNo: 68, marketVersion: 69, updatedAt: at, nextBoundaryAt: '2026-10-09T00:05:00.000Z', state: 'OPEN' };
@@ -45,13 +44,3 @@ export function visualQaFixtures(): Readonly<Record<string, ReplyView>> {
   };
 }
 
-export function chartQaFixtures(): Readonly<Record<string, PriceChartInput>> {
-  const points = Array.from({ length: 69 }, (_, tickNo) => ({ tickNo, at: new Date(Date.parse(at) + tickNo * 300000).toISOString(), value: tickNo === 68 ? '985' : tickNo === 67 ? '1000' : (1000 + Math.sin(tickNo / 6) * 20).toFixed(6) }));
-  const raw: PriceChartInput = { symbol: 'RVI', name: '리버인프라', generation: 1, series: 'PRICE', scale: 'LINEAR', points, annotations: [{ tickNo: 68, label: '배당락 · 주당 15' }], marketVersion: 69, state: 'OPEN' };
-  return {
-    'price-ex': raw,
-    'total-return': { ...raw, series: 'TOTAL_RETURN', points: points.map((point) => ({ ...point, value: point.tickNo === 68 ? '1000' : point.value })) },
-    'retired-log': { ...raw, scale: 'LOG', points: points.map((point) => ({ ...point, value: point.tickNo === 68 ? '0' : point.value })), annotations: [{ tickNo: 68, label: '청산 완료 · 1세대 종료' }], state: 'PAUSED' },
-    'extreme-linear': { ...raw, points: [ { ...points[0]!, value: '1e-60' }, { ...points[1]!, value: '2e-60' } ], annotations: [] },
-  };
-}

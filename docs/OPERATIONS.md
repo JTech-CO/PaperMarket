@@ -127,6 +127,6 @@ npm run verify:model -- --preset drift --max-ticks-per-run 1000 --max-seconds 60
 
 각 명령은 한 번의 제한된 실행입니다. 같은 preset·출력 디렉터리로 다시 실행하면 확정 checkpoint에서 이어갑니다. `reference`는 160개 보정/40개 holdout 시드×10,000틱이고 `drift`는 고정 두 시드×100,000틱입니다. 작은 pilot의 COMPLETE는 큰 배치의 완료를 의미하지 않습니다. `IN_PROGRESS`·`FAILED`도 실제 범위와 자원을 기록하며 실패 시드를 지워 다른 시드로 바꾸지 않습니다. 시간 상한은 협력적 검사로 현재 틱/원자적 checkpoint 쓰기의 시간이 추가될 수 있습니다.
 
-결과는 `artifacts/milestone6/model-<preset>.json`, 상태는 `.model-checkpoints/<preset>`에 저장합니다. 강제 종료 뒤 `.model-validation.lock`이 남으면 기록된 PID와 해당 검증 프로세스의 종료를 먼저 확인합니다. 운영자가 그 preset의 잠금 파일 한 개와 자신의 미완성 `.tmp` 파일만 점검한 뒤 확정 index에서 재개합니다. 금융 DB의 작성자 잠금이나 완료 checkpoint를 지우지 않습니다. 결과가 잘 나오도록 preset·시드·경제 파라미터를 바꾸지 않습니다.
+결과는 `.runtime/validation/model-<preset>.json`, 재개 상태는 같은 디렉터리의 `.model-checkpoints/<preset>`에 저장합니다. 결과·이전 보고서·출처 기록·체크포인트는 함께 보관하며 Git에 포함하지 않습니다. 강제 종료 뒤 `.model-validation.lock`이 남으면 기록된 PID와 해당 검증 프로세스의 종료를 먼저 확인합니다. 운영자가 그 preset의 잠금 파일 한 개와 자신의 미완성 `.tmp` 파일만 점검한 뒤 확정 index에서 재개합니다. 금융 DB의 작성자 잠금이나 완료 checkpoint를 지우지 않습니다. 결과가 잘 나오도록 preset·시드·경제 파라미터를 바꾸지 않습니다.
 
 부하 진단은 `npm run verify:load`, 합성 백업 복구 진단은 `npm run verify:recovery`입니다. 부하는 실제 Worker에서 계좌/체결/틱을 진행하므로 모형 배치·전체 테스트 등 다른 무거운 작업과 동시에 실행한 경우 경쟁 여부를 결과에 기록합니다. 공개 가격 projection 800,000행 검사는 경제/권리/기준전략 10,000틱 생산 이력 검사를 대신하지 않습니다.
