@@ -16,3 +16,4 @@ backups/
 *.log
 .runtime/
 coverage/
+.vsf/
