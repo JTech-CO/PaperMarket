@@ -19,6 +19,11 @@ const marketId = 'benchmark_market';
 const guild = '111111111111111111';
 const user = '222222222222222222';
 const original = INITIAL_COMPANIES[0]!;
+function contribute(db:ReturnType<typeof openDatabase>,accountId:string,tick:number):void {
+  const amount=parseMoney('1000').toString();const event=`benchmark_contribution_${tick}`;
+  db.prepare("INSERT INTO cash_journal(journal_id,event_id,cause_id,market_id,account_id,entry_type,account_delta_atoms,system_delta_atoms,system_account,currency,tick_no,market_version,sequence_no,engine_version,ruleset_version,created_at,related_order_id) SELECT ?,?,'benchmark_external_capital',market_id,account_id,'CONTRIBUTION',?,?,'EXTERNAL_CAPITAL',currency,?,?,?,engine_version,ruleset_version,created_at,NULL FROM cash_journal WHERE market_id=? AND account_id=? AND entry_type='INITIAL_GRANT'")
+    .run(`${event}_journal`,event,amount,`-${amount}`,tick,tick,tick+2,marketId,accountId);
+}
 function fixture(t: TestContext, initialDailyRate = '0') {
   const db = openDatabase(':memory:'); t.after(() => db.close());
   if (!db.prepare("SELECT name FROM sqlite_master WHERE name='benchmark_series'").get()) db.exec(benchmarkSchemaSql);
@@ -228,4 +233,27 @@ test('exact shared holding valuation remains independent of cash and observes ch
   state.cashAtoms=parseMoney('20').toString();assert.deepEqual(benchmarkEquity(state,frame),{numerator:2020n,denominator:1n});
   prices.set(original.listingId,'900');assert.deepEqual(benchmarkEquity(state,frame),{numerator:1820n,denominator:1n});
   prices.delete(original.listingId);assert.throws(()=>benchmarkEquity(state,frame),/lost its price/);
+});
+
+test('owned shadows receive actual end-boundary funding in cash while returns and PM8 exclude its amount',t=>{
+  const f=fixture(t);f.reporting.initializeMarket(marketId);f.reporting.initializeAccount(marketId,f.account.accountId,0);
+  const opening=f.reporting.owned(marketId,f.account.accountId);
+  const positions=structuredClone(f.state('HOLD8').positions);
+  for(let tick=1;tick<=21;tick++){f.frame(tick,tick===21?'0.001':'0');if(tick===21)contribute(f.db,f.account.accountId,tick);f.reporting.advanceBoundary(marketId);}
+  const funded=f.reporting.owned(marketId,f.account.accountId);
+  assert.equal(funded.cash.equity,'11000');assert.equal(funded.cash.contributions,'1000');assert.equal(funded.cash.netInvestmentPnl,'0');assert.equal(funded.cash.totalReturnPct,'0');assert.equal(funded.cash.index,'1000');
+  assert.equal(new D(funded.hold8.equity).minus(opening.hold8.equity).toString(),'1000');assert.equal(funded.hold8.totalReturnPct,opening.hold8.totalReturnPct);assert.deepEqual(f.state('HOLD8').positions,positions);assert.match(funded.hold8.contributionPolicy??'',/현금/);
+  assert.equal(f.reporting.pm8(marketId).contributions,'0');
+  f.frame(22);f.reporting.advanceBoundary(marketId);
+  assert.equal(f.reporting.owned(marketId,f.account.accountId).cash.equity,'11011');
+  assert.equal(f.reporting.owned(marketId,f.account.accountId).cash.totalReturnPct,'0.1');
+  const restart=new ReportingBenchmarks(f.db);restart.initializeAccount(marketId,f.account.accountId);
+  assert.deepEqual(restart.owned(marketId,f.account.accountId),f.reporting.owned(marketId,f.account.accountId));
+});
+
+test('a funding row inserted behind an already verified shadow history is detected',t=>{
+  const f=fixture(t);f.reporting.initializeAccount(marketId,f.account.accountId,0);
+  f.frame(1);f.reporting.advanceBoundary(marketId);f.reporting.owned(marketId,f.account.accountId);
+  contribute(f.db,f.account.accountId,1);
+  assert.throws(()=>f.reporting.owned(marketId,f.account.accountId),/funding ledger differs/);
 });

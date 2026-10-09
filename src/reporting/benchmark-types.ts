@@ -6,6 +6,10 @@ export interface BenchmarkView {
   readonly tickNo: number;
   readonly equity: string;
   readonly cash: string;
+  readonly initialCapital?: string;
+  readonly contributions?: string;
+  readonly netInvestmentPnl?: string;
+  readonly contributionPolicy?: string;
   readonly totalReturnPct: string;
   readonly fees: string;
   readonly cashInterest: string;

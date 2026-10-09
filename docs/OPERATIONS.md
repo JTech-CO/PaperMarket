@@ -63,6 +63,8 @@ node --env-file-if-exists=.env dist/src/ops/backup-cli.js verify-mirror <백업-
 5. 종료·권리 요청·DM 철회 결과를 백업 시점 이후 기록과 대조하여 다시 반영하고 새 경로를 `PAPERMARKET_DATABASE_PATH`로 지정합니다. 계좌 개설·초기자금 재지급을 새로 실행하지 않습니다.
 6. 원본/새 DB·WAL·잠금 위치, 시장 시각·예약·권리·기준전략·성과를 확인한 뒤 서버를 시작합니다. 시작 복구는 검증되지 않은 오프라인 시간을 경제 틱으로 무한 재생하지 않습니다. 이전 파일은 운영자가 정한 격리·보존·파기 절차로 처리합니다.
 
+스키마 7은 기존 원장을 보존하며 정기 납입 계획과 납입 직전 평가 기록을 추가합니다. 기존 활성 계좌의 주기는 마이그레이션 당시 시장 틱부터 시작하고 과거 몫을 지급하지 않습니다. 백업 검증은 백업과 코드의 스키마가 같아야 합니다. 스키마 6 백업은 스키마 6 코드로 새 파일에 복원·검증한 뒤, 스키마 7 코드로 시작하여 마이그레이션합니다. 기존 백업을 덮어쓰지 않습니다.
+
 ```powershell
 node --env-file-if-exists=.env dist/src/ops/backup-cli.js restore <백업-ID> 'C:\프로젝트\data\recovered.sqlite'
 node --env-file-if-exists=.env dist/src/ops/backup-cli.js restore-mirror <백업-ID> 'C:\프로젝트\data\recovered.sqlite'
@@ -113,6 +115,8 @@ npm run health:check
 6. 권리·예약·시장 시각·기준전략·성과·개인 요청 대조가 끝난 뒤 재개하고 결과를 남깁니다. 개인정보 침해의 법적 통지·신고 판단과 관리자 접속기록은 운영 주체가 확정할 별도 절차입니다.
 
 ## 재개 가능한 모형 검증
+
+경제 모형 검증의 그림자 계좌는 최초 10,000포인트만 투입하는 고정 원금 시나리오입니다. 개인 계좌의 정기 납입은 이 실험에 넣지 않으며 실서비스 계좌와 비교할 때 자금 흐름의 차이를 구분합니다.
 
 ```powershell
 npm run verify:model -- --preset pilot --max-ticks-per-run 1000 --max-seconds 60

@@ -15,6 +15,7 @@ export interface BackendObservation {
 function operation(request:ServiceRequest):BackendObservation['operation'] {
   if(request.type==='tick')return 'TICK';
   if(!('context' in request))return 'BACKGROUND';
+  if(request.type==='funding'&&request.enabled!==undefined)return 'FINANCIAL';
   return ['setup','open','confirm','cancel','cancel-order','close','save-board'].includes(request.type)?'FINANCIAL':'QUERY';
 }
 

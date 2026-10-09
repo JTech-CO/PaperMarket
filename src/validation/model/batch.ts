@@ -112,6 +112,7 @@ function report(index:Index,plan:ModelPlan) {
     hardware:modelHardware(),measurementContext:'Local single-process measurement. Other unit checks or milestone work may have run concurrently; exclusive-host throughput is not asserted.',resources:index.resources,strategies:strategyDefinition,
     drawdownObservationPolicy:'Original 10000 grant, exact post-buy tick-zero equity, and every committed close. The recorder now includes opening fees; financial checkpoint state, prices and decisions are unchanged.',strategyReturns,seeds,
     limitations:['Pilot results do not establish calibration or statistical power.','All prices come from the full production economic/public/pricing engine; account settlement shares production exact benchmark helpers.',
+      'Preregistered model strategies use only their original 10000 capital with recurring contributions disabled; their strategy returns do not represent accounts receiving additional deposits.',
       'Offline batch excludes SQLite/Discord latency; those are measured separately.','Shadow strategies transact at a committed close without user timing, latency or order reservations.',
       'Dividend coverage is declared amount divided by the publicly available four-quarter average recurring net profit; cash and reserve constraints still apply in the engine.',
       'Complete seeds and failed or partial seeds retain their actual horizons; aggregate strategy numbers cannot be treated as equal-horizon performance until coverage is complete.'],

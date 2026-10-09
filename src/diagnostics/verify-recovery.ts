@@ -23,6 +23,8 @@ const fingerprintQueries = Object.freeze({
   markets: 'SELECT * FROM markets ORDER BY rowid', issuers: 'SELECT * FROM issuers ORDER BY rowid',
   listings: 'SELECT * FROM listings ORDER BY rowid', accounts: 'SELECT * FROM accounts ORDER BY rowid',
   cash_journal: 'SELECT * FROM cash_journal ORDER BY rowid', position_journal: 'SELECT * FROM position_journal ORDER BY rowid',
+  account_contribution_plans:'SELECT * FROM account_contribution_plans ORDER BY market_id,account_id',
+  contribution_valuations:'SELECT * FROM contribution_valuations ORDER BY market_id,account_id,tick_no',
   processed_commands: 'SELECT * FROM processed_commands ORDER BY rowid',
   account_subjects: 'SELECT * FROM account_subjects ORDER BY rowid', broker_metadata: 'SELECT * FROM broker_metadata ORDER BY rowid',
   market_settings: 'SELECT * FROM market_settings ORDER BY rowid', policy_acceptances: 'SELECT * FROM policy_acceptances ORDER BY rowid',
@@ -90,6 +92,8 @@ export function verifyRecoveryDatabase(db: Database.Database, keys: RecoveryKeys
         const guild = (db.prepare('SELECT guild_id FROM markets WHERE market_id=?').get(owner.market_id) as { guild_id: string }).guild_id;
         const subject = createHmac('sha256', keys.identityKey).update(JSON.stringify(['PaperMarket subject v1', guild, owner.discord_user_id])).digest('hex');
         if (subject !== owner.subject_hash) throw new LedgerIntegrityError('Recovery active subject differs.');
+        const plan=db.prepare('SELECT p.start_tick,p.interval_ticks,p.amount_atoms,p.enabled,m.tick_no FROM account_contribution_plans p JOIN markets m ON m.market_id=p.market_id WHERE p.market_id=? AND p.account_id=?').get(owner.market_id,owner.account_id) as {start_tick:number;interval_ticks:number;amount_atoms:string;enabled:number;tick_no:number}|undefined;
+        if(!plan||!Number.isSafeInteger(plan.start_tick)||plan.start_tick<0||plan.start_tick>plan.tick_no||plan.interval_ticks!==21||plan.amount_atoms!=='1000000000000000'||![0,1].includes(plan.enabled))throw new LedgerIntegrityError('Recovery contribution plan differs.');
       }
       const replayed = foundation.replayAccount({ marketId: owner.market_id, discordUserId: owner.discord_user_id });
       rights.replay(owner.market_id, owner.account_id);

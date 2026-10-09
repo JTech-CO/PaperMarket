@@ -32,10 +32,10 @@ const metadataSchema = z.object({
 });
 
 export const cashJournalRowSchema = metadataSchema.extend({
-  entry_type: z.enum(['INITIAL_GRANT', 'TRADE', 'DIVIDEND', 'INTEREST', 'LIQUIDATION', 'REVERSAL', 'ROUNDING']),
+  entry_type: z.enum(['INITIAL_GRANT', 'TRADE', 'DIVIDEND', 'INTEREST', 'LIQUIDATION', 'REVERSAL', 'ROUNDING', 'CONTRIBUTION']),
   account_delta_atoms: z.string().min(1).max(51),
   system_delta_atoms: z.string().min(1).max(51),
-  system_account: z.enum(['INITIAL_CAPITAL', 'BROKER', 'DIVIDEND', 'INTEREST', 'LIQUIDATION', 'ROUNDING']),
+  system_account: z.enum(['INITIAL_CAPITAL', 'BROKER', 'DIVIDEND', 'INTEREST', 'LIQUIDATION', 'ROUNDING', 'EXTERNAL_CAPITAL']),
   currency: z.literal('PAPERMARKET_POINT'),
 });
 
@@ -112,6 +112,9 @@ export function replayJournal(input: {
         if (cashEvents.size !== 1 || delta !== INITIAL_ACCOUNT_GRANT_ATOMS || row.system_account !== 'INITIAL_CAPITAL') throw new LedgerIntegrityError();
       } else if (grants !== 1) {
         throw new LedgerIntegrityError('Initial grant must precede financial movements.');
+      }
+      if (row.entry_type === 'CONTRIBUTION' && (delta !== 1_000_000_000_000_000n || row.system_account !== 'EXTERNAL_CAPITAL' || row.related_order_id !== null)) {
+        throw new LedgerIntegrityError('External contribution terms differ from policy.');
       }
       cashAtoms += delta;
       if (cashAtoms < 0n) throw new LedgerIntegrityError('Account cash cannot be negative.');

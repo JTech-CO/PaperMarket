@@ -6,7 +6,7 @@
 [![TypeScript 6.0.3](https://img.shields.io/badge/TypeScript-6.0.3-3178C6?style=flat-square&logo=typescript&logoColor=white)](package.json)
 [![discord.js 14.27.0](https://img.shields.io/badge/discord.js-14.27.0-5865F2?style=flat-square&logo=discord&logoColor=white)](package.json)
 [![SQLite WAL](https://img.shields.io/badge/SQLite-WAL-003B57?style=flat-square&logo=sqlite&logoColor=white)](src/storage/database.ts)
-[![Slash Commands 21](https://img.shields.io/badge/Slash_Commands-21-0F766E?style=flat-square&logo=discord&logoColor=white)](src/discord/commands.ts)
+[![Slash Commands 22](https://img.shields.io/badge/Slash_Commands-22-0F766E?style=flat-square&logo=discord&logoColor=white)](src/discord/commands.ts)
 
 가상 기업의 실적·금리·현금흐름·공시와 시장 기대로 움직이는 **Discord 모의투자 시뮬레이터**입니다. 혼자서도 계좌를 개설하고 투자 판단과 결과를 기록할 수 있습니다. 실제 자금·주식과 연결되지 않습니다.
 
@@ -49,16 +49,19 @@ npm start
 | `/financial symbol:HGI` | 공개 실적·현금흐름·시장 전망 조회 |
 | `/news`, `/calendar` | 공개 공시와 실적·배당·정책 일정 조회 |
 | `/chart symbol:HGI` | 원가격·배당 포함 총가치의 PNG 차트 조회 |
-| `/buy symbol:HGI quantity:1` | 시장가 또는 지정가 매수 견적 확인 |
+| `/buy symbol:HGI budget:1000` | 수수료 포함 금액으로 소수점 매수 견적 확인. 수량·지정가도 지원 |
+| `/funding enabled:true` | 21틱마다 1,000포인트의 정기 투자금 납입 설정·다음 지급 조회 |
 | `/sell symbol:HGI quantity:1` | 시장가·지정가·스톱 매도 견적 확인 |
 | `/orders` | 본인의 미체결 주문·예약 자산 조회 및 취소 |
 | `/portfolio`, `/history` | 본인의 자산·손익과 거래·배당·이자 내역 조회 |
-| `/performance` | 총수익·최대낙폭·동일 개설 시점 기준전략 비교 |
+| `/performance` | 납입금을 제외한 손익·시간가중 수익률·최대낙폭·같은 자금 흐름의 기준전략 비교 |
 | `/alerts` | 관심 종목·가격 알림·알림함·선택 DM 관리 |
 | `/export format:CSV` | 본인 기록을 CSV 또는 JSON으로 내보내기 |
 | `/help`, `/privacy` | 모의투자 규칙·약관·개인정보 처리 안내 |
 | `/close confirmed:true` | 계좌 이용 종료·ID 연결 제거, 금융 기록 보관 |
 
 매매는 견적을 확인한 뒤 확인 버튼으로 확정합니다. 지정가는 `order_type:LIMIT price:950`, 스톱 매도는 `order_type:STOP price:900`을 추가합니다. 개인 계좌·거래·성과 응답은 비공개입니다.
+
+회사 화면의 금액 매수에서 1,000·5,000포인트와 가용 현금 비율을 선택할 수 있습니다. 정기 투자금은 계좌 개설 후 활성 시장 틱 기준으로 자동 납입되며 접속·채팅·거래 횟수와 관계없습니다. `/funding enabled:false`로 중단할 수 있습니다.
 
 [기술·디자인 백서](docs/PaperMarket_Technical_Whitepaper_KR.md) · [운영 안내](docs/OPERATIONS.md) · [정책 안내](docs/policy/README.md)

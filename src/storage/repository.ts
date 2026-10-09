@@ -293,6 +293,20 @@ export class FoundationRepository {
       WHERE j.market_id = ? AND j.account_id = ? AND a.discord_user_id = ?
         AND (? IS NULL OR j.sequence_no <= ?)
       ORDER BY j.sequence_no,j.journal_id`).all(scope.marketId, accountId, scope.discordUserId, sequenceLimit, sequenceLimit);
+    const contributions=cashRows.filter(row=>(row as {entry_type:string}).entry_type==='CONTRIBUTION') as {event_id:string;tick_no:number;sequence_no:number;account_delta_atoms:string}[];
+    // Foundation migration fixtures also replay genuine pre-v7 databases. Their
+    // cash CHECK cannot contain contributions; current schemas require checkpoints.
+    const schemaVersion=this.#db.pragma('user_version',{simple:true});
+    const valuations=schemaVersion!==undefined&&Number(schemaVersion)>=7?this.#db.prepare(`SELECT v.event_id,v.tick_no,v.sequence_no,v.amount_atoms,v.before_equity_atoms FROM contribution_valuations v
+      JOIN accounts a ON a.market_id=v.market_id AND a.account_id=v.account_id
+      WHERE v.market_id=? AND v.account_id=? AND a.discord_user_id=? AND (? IS NULL OR v.sequence_no<=?)`)
+      .all(scope.marketId,accountId,scope.discordUserId,sequenceLimit,sequenceLimit) as {event_id:string;tick_no:number;sequence_no:number;amount_atoms:string;before_equity_atoms:string}[]:[];
+    const byEvent=new Map(valuations.map(row=>[row.event_id,row]));
+    if(valuations.length!==contributions.length||byEvent.size!==contributions.length)throw new LedgerIntegrityError('External contribution checkpoints differ.');
+    for(const row of contributions) {
+      const value=byEvent.get(row.event_id);
+      if(!value||value.tick_no!==row.tick_no||value.sequence_no!==row.sequence_no||value.amount_atoms!==row.account_delta_atoms||moneyFromAtoms(value.before_equity_atoms)<0n)throw new LedgerIntegrityError('External contribution checkpoint differs from its journal.');
+    }
     return replayJournal({
       accountId, marketId: scope.marketId, cashRows, positionRows, accountCreatedAt: account.created_at,
       maximumMetadata: { tickNo: market.tick_no, marketVersion: market.market_version, sequenceNo: sequenceLimit ?? market.sequence_no },

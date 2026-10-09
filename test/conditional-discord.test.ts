@@ -60,7 +60,7 @@ function assertBudget(view: ReplyView) {
 
 test('commands expose market/limit buy, market/limit/stop sell, bounded ticks and private orders entry point', () => {
   const commands = buildCommands().map((command) => command.toJSON());
-  assert.equal(commands.length, 21); assert.ok(commands.some((command) => command.name === 'orders'));
+  assert.equal(commands.length, 22); assert.ok(commands.some((command) => command.name === 'orders'));
   const buy = commands.find((command) => command.name === 'buy')!;
   const sell = commands.find((command) => command.name === 'sell')!;
   const option = (command: typeof buy, name: string) => command.options?.find((item) => item.name === name);

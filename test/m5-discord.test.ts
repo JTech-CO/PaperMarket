@@ -4,7 +4,7 @@ import { ButtonStyle, ComponentType, InteractionContextType, MessageFlags, Permi
 import type { Backend, ServiceRequest, ServiceResponse, StockView } from '../src/application/contracts.js';
 import { buildCommands, createInteractionHandler } from '../src/discord/index.js';
 import { UI_COLORS, errorEmbed } from '../src/discord/messages.js';
-import { renderAlerts, renderCalendar, renderExport, renderNews, renderPriceChart, renderServiceResponse, renderStock, type ReplyView } from '../src/discord/render.js';
+import { renderAlerts, renderBuyChoices, renderCalendar, renderExport, renderNews, renderPriceChart, renderServiceResponse, renderStock, type ReplyView } from '../src/discord/render.js';
 import { tradeModal } from '../src/discord/forms.js';
 import { visualQaFixtures } from '../src/charts/qa-fixtures.js';
 
@@ -34,7 +34,7 @@ function fake(input: { command?: string; button?: string; modal?: string; string
     commandName: input.command, customId: input.modal ?? input.button, createdTimestamp: 1,
     isChatInputCommand: () => Boolean(input.command), isButton: () => Boolean(input.button), isModalSubmit: () => Boolean(input.modal),
     options: { getString: (name: string) => input.strings?.[name] ?? null, getInteger: (name: string) => input.integers?.[name] ?? null, getBoolean: (name: string) => input.booleans?.[name] ?? null },
-    fields: { getTextInputValue: (name: string) => input.fields?.[name] ?? '' },
+    fields: { fields: new Map(Object.entries(input.fields ?? {})), getTextInputValue: (name: string) => input.fields?.[name] ?? '' },
     async deferReply(options: unknown) { events.push('defer'); assert.deepEqual(options, { flags: MessageFlags.Ephemeral }); },
     async editReply(view: ReplyView) { events.push('edit'); replies.push(view); },
     async showModal(modal: { toJSON(): unknown }) { events.push('modal'); shown.push(modal.toJSON()); },
@@ -48,7 +48,7 @@ function backend(response: ServiceResponse = { kind: 'STOCK', stock }) {
 
 test('milestone5 commands are guild-only and contain bounded options and canonical company name', () => {
   const commands = buildCommands().map((command) => command.toJSON());
-  assert.equal(commands.length, 21); assert.equal(new Set(commands.map((command) => command.name)).size, commands.length);
+  assert.equal(commands.length, 22); assert.equal(new Set(commands.map((command) => command.name)).size, commands.length);
   for (const name of ['company', 'news', 'calendar', 'chart', 'performance', 'export', 'alerts']) assert.ok(commands.some((command) => command.name === name));
   for (const command of commands) assert.deepEqual(command.contexts, [InteractionContextType.Guild]);
   assert.equal(commands.some((command) => command.name === 'stock'), false);
@@ -83,8 +83,106 @@ test('trade buttons open modern Label modal without acknowledging a reply or sub
   const fakeButton = fake({ button: 'pm:trade:BUY:RVI:1' }); const service = backend();
   await createInteractionHandler(service.value, { operator, now: () => now })(fakeButton.interaction);
   assert.deepEqual(fakeButton.events, ['modal']); assert.equal(service.requests.length, 0);
-  const modal = tradeModal('BUY', 'RVI', 1).toJSON(); assert.equal(modal.components.length, 4);
+  const modal = tradeModal('BUY', 'RVI', 1).toJSON(); assert.equal(modal.components.length, 5);
   assert.ok(modal.components.every((component) => component.type === ComponentType.Label));
+  const amount = modal.components[0]; assert.ok(amount && 'component' in amount);
+  assert.equal(amount.component.custom_id, 'budget'); assert.equal(amount.component.type, ComponentType.TextInput);
+  const sell = tradeModal('SELL', 'RVI', 1).toJSON(); assert.equal(sell.components.length, 4);
+});
+
+test('company amount-buy menu is private and presets forward only server-bound identity and issuer generation', async () => {
+  const menu = fake({ button: 'pm:buy:RVI:1' }); const service = backend({ kind: 'ERROR', code: 'STALE_QUOTE' });
+  const handler = createInteractionHandler(service.value, { operator, now: () => now });
+  await handler(menu.interaction); assert.deepEqual(menu.events, ['defer', 'edit']); assert.equal(service.requests.length, 0);
+  budget(menu.replies[0]!); assert.match(text(menu.replies[0]!), /수수료를 포함/); assert.match(text(menu.replies[0]!), /소수점 6자리/);
+  for (const preset of ['1000', '5000', 'P50']) {
+    const click = fake({ button: `pm:buyquote:${preset}:RVI:1`, user: '100000000000000009', fields: { cash: '999999', owner: 'victim' } });
+    await handler(click.interaction); assert.deepEqual(click.events, ['defer', 'edit']); budget(click.replies[0]!);
+    const request = service.requests.at(-1)!; assert.ok(request.type === 'quote');
+    assert.equal(request.symbol, 'RVI'); assert.equal(request.generation, 1); assert.equal(request.side, 'BUY');
+    assert.equal(request.context.discordUserId, '100000000000000009'); assert.equal(request.context.receivedAt, now.toISOString());
+    assert.equal(request.budget, preset === 'P50' ? undefined : preset); assert.equal(request.budgetPercent, preset === 'P50' ? 50 : undefined);
+    assert.equal(request.quantity, undefined); assert.equal('cash' in request, false); assert.equal('owner' in request, false);
+    assert.match(text(click.replies[0]!), /새 견적/);
+  }
+  assert.equal(service.requests.length, 3);
+  for (const route of ['pm:buyquote:P75:RVI:1', 'pm:buyquote:1000:RVI:1000001', 'pm:buyquote:999999:RVI:1', 'pm:buyquote:1000:RVI:1:owner']) {
+    const bad = fake({ button: route }); await handler(bad.interaction); assert.match(text(bad.replies[0]!), /입력 형식/);
+  }
+  const dm = fake({ button: 'pm:buyquote:1000:RVI:1', guild: null }); await handler(dm.interaction);
+  assert.equal(service.requests.length, 3); assert.match(text(dm.replies[0]!), /서버 안에서/);
+  budget(renderBuyChoices('RVI', 1)); assert.equal(renderBuyChoices('@everyone', 1).components.length, 0);
+});
+
+test('budget-first modal and slash options create fee-inclusive amount or allowlisted cash-percentage quotes', async () => {
+  const service = backend({ kind: 'ERROR', code: 'STALE_QUOTE' }); const handler = createInteractionHandler(service.value, { operator });
+  for (const amount of ['1000', '10000', '25%', '50%', '100%']) {
+    const form = fake({ modal: 'pm:tradeform:BUY:RVI:1', fields: { budget: amount, order_type: 'MARKET' } });
+    await handler(form.interaction); const request = service.requests.at(-1)!; assert.ok(request.type === 'quote');
+    assert.equal(request.quantity, undefined); assert.equal(request.budget, amount.endsWith('%') ? undefined : amount);
+    assert.equal(request.budgetPercent, amount.endsWith('%') ? Number(amount.slice(0, -1)) : undefined); assert.equal(request.generation, 1);
+    assert.deepEqual(form.events, ['defer', 'edit']);
+  }
+  for (const percentage of [25, 50, 100]) {
+    const slash = fake({ command: 'buy', strings: { symbol: 'RVI' }, integers: { budget_percent: percentage } }); await handler(slash.interaction);
+    const request = service.requests.at(-1)!; assert.ok(request.type === 'quote'); assert.equal(request.budgetPercent, percentage);
+  }
+  const legacyQuantity = fake({ modal: 'pm:tradeform:BUY:RVI:1', fields: { quantity: '0.25', order_type: 'MARKET' } });
+  await handler(legacyQuantity.interaction); const legacyRequest = service.requests.at(-1)!; assert.ok(legacyRequest.type === 'quote');
+  assert.equal(legacyRequest.quantity, '0.25'); assert.equal(legacyRequest.budget, undefined); assert.equal(legacyRequest.budgetPercent, undefined);
+  assert.equal(service.requests.length, 9);
+});
+
+test('invalid amounts, mixed quantity-budget requests and unsupported percentages stop before broker execution', async () => {
+  const cases = [
+    ...['0', '-1', 'NaN', '1e9', '0.0000000000001', '9'.repeat(65), '75%', '100%owner', '@everyone'].map((amount) => ({ modal: 'pm:tradeform:BUY:RVI:1', fields: { budget: amount, order_type: 'MARKET' } })),
+    { modal: 'pm:tradeform:BUY:RVI:1', fields: { budget: '1000', quantity: '1', order_type: 'MARKET' } },
+    { modal: 'pm:tradeform:BUY:RVI:1', fields: { budget: '50%', quantity: '1', order_type: 'MARKET' } },
+    { modal: 'pm:tradeform:BUY:RVI:1', fields: { budget: '1000', order_type: 'LIMIT', price: '900' } },
+    { modal: 'pm:tradeform:BUY:RVI:1', fields: { budget: '50%', quantity: '1', order_type: 'LIMIT', price: '900' } },
+    { modal: 'pm:tradeform:BUY:RVI:1', fields: { order_type: 'MARKET' } },
+    { command: 'buy', strings: { symbol: 'RVI', budget: '1000' }, integers: { budget_percent: 50 } },
+    { command: 'buy', strings: { symbol: 'RVI', quantity: '1' }, integers: { budget_percent: 25 } },
+    { command: 'buy', strings: { symbol: 'RVI', quantity: '1', order_type: 'LIMIT', price: '900' }, integers: { budget_percent: 100 } },
+    ...[0, 75, 101, 25.5].map((percentage) => ({ command: 'buy', strings: { symbol: 'RVI' }, integers: { budget_percent: percentage } })),
+  ];
+  for (const input of cases) {
+    const service = backend(); const form = fake(input); await createInteractionHandler(service.value, { operator })(form.interaction);
+    assert.equal(service.requests.length, 0); assert.deepEqual(form.events, ['defer', 'edit']); assert.match(text(form.replies[0]!), /입력 형식/);
+    assert.doesNotMatch(text(form.replies[0]!), /NaN|@everyone|100%owner/); budget(form.replies[0]!);
+  }
+});
+
+test('funding queries and toggles are private, owner-bound and omit arbitrary financial inputs', async () => {
+  const service = backend({ kind: 'FUNDING', funding: { enabled: true, amount: '1000', intervalTicks: 21, startTick: 68, nextContributionTick: 89, contributions: '2000' } });
+  const handler = createInteractionHandler(service.value, { operator });
+  for (const enabled of [undefined, false, true]) {
+    const command = fake({ command: 'funding', strings: { amount: '999999', owner: 'victim' }, ...(enabled === undefined ? {} : { booleans: { enabled } }) });
+    await handler(command.interaction); const request = service.requests.at(-1)!; assert.ok(request.type === 'funding'); assert.equal(request.enabled, enabled);
+    assert.equal(request.context.discordUserId, '100000000000000002'); assert.equal('amount' in request, false); assert.equal('owner' in request, false);
+    assert.deepEqual(command.events, ['defer', 'edit']); budget(command.replies[0]!);
+    assert.match(text(command.replies[0]!), /21틱마다 1,000\.00/); assert.match(text(command.replies[0]!), /추가 입금은 투자 손익에 포함되지/);
+    assert.match(text(command.replies[0]!), /소급 지급하지/); assert.doesNotMatch(text(command.replies[0]!), /999999|victim/);
+  }
+  const navigation = fake({ button: 'pm:view:funding', user: '100000000000000009' }); await handler(navigation.interaction);
+  const request = service.requests.at(-1)!; assert.ok(request.type === 'funding'); assert.equal(request.context.discordUserId, '100000000000000009');
+});
+
+test('portfolio and performance label added capital separately without presenting deposits as profit', () => {
+  const portfolio = renderServiceResponse({ kind: 'PORTFOLIO', portfolio: {
+    account: { accountId: 'private-account', cash: '12000', status: 'ACTIVE', accountVersion: 2, createdAt: now.toISOString() },
+    marketVersion: 89, positions: [], equity: '12000', totalReturnPct: '0', initialCapital: '10000', contributions: '2000', netInvestmentPnl: '0', nextContributionTick: 110,
+  } }); budget(portfolio); assert.match(text(portfolio), /추가 입금 2,000\.00/); assert.match(text(portfolio), /투자 손익 0\.00/);
+  assert.match(text(portfolio), /투자 수익률 보합 0\.00%/); assert.match(text(portfolio), /다음 110틱/); assert.doesNotMatch(text(portfolio), /상승 \+20|private-account/);
+  const baseline = { startTick: 68, tickNo: 89, equity: '12000', cash: '12000', totalReturnPct: '0', fees: '0', cashInterest: '0', dividends: '0', liquidationReceipts: '0', receivables: '0', openingPolicy: 'EXACT_ACTIVE_OFFSET' as const, index: '100' };
+  const performance = renderServiceResponse({ kind: 'PERFORMANCE', performance: {
+    ...stock, equity: '12000', totalReturnPct: '0', initialCapital: '10000', contributions: '2000', netInvestmentPnl: '0', nextContributionTick: 110,
+    previousTickChangePct: '0', maxDrawdownPct: '0', realizedPnl: '0', unrealizedPnl: '0', fees: '0', cashInterest: '0', dividends: '0', liquidation: '0', otherRightsPnl: '0', rounding: '0', reconciled: true, cashWeightPct: '100',
+    startedTick: 68, currentTick: 89, missingHistory: false, sampleCount: 22, drawdownDefinition: '입금 영향을 제외한 확정 성과의 최고점 대비 하락률',
+    baselines: { cash: { ...baseline, kind: 'CASH' }, hold8: { ...baseline, kind: 'HOLD8' } }, pm8: { ...baseline, kind: 'PM8', openingPolicy: 'MARKET_ADOPTION' },
+  } }); budget(performance); assert.match(text(performance), /추가 입금 2,000\.00 · 투자 손익 0\.00/);
+  assert.match(text(performance), /입금 영향을 제거한 시간가중/); assert.match(text(performance), /같은 시점·금액의 추가 입금/);
+  assert.match(text(performance), /8종목 보유 전략은 추가 입금을 현금으로 유지/); assert.doesNotMatch(text(performance), /외부 입출금은 없습니다|상승 \+20/);
 });
 
 test('modal submit is private, generation-bound, server-owned and only creates a quote', async () => {

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { linkSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
-import { readRuntimeConfig } from '../src/runtime/config.js';
+import { readDatabasePath, readRuntimeConfig } from '../src/runtime/config.js';
 import { ProcessLock, WriterAlreadyRunningError } from '../src/runtime/process-lock.js';
 import { RequestGate } from '../src/runtime/backpressure.js';
 import { WorkerBackend } from '../src/runtime/backend.js';
@@ -51,10 +51,23 @@ test('startup requires secrets/operator identity and a project-local database', 
   assert.throws(()=>readRuntimeConfig({...environment,PAPERMARKET_BACKUP_DIRECTORY:'../outside'}));
   assert.throws(()=>readRuntimeConfig({...environment,PAPERMARKET_BACKUP_MIRROR_DIRECTORY:'relative/mirror'}));
   if(process.platform==='win32'){
-    for(const path of ['data/trial.sqlite:alternate','data/CON.sqlite','data/COM1.sqlite','data/LPT².sqlite','data/alias. /trial.sqlite','data/trial.sqlite.'])assert.throws(()=>readRuntimeConfig({...environment,PAPERMARKET_DATABASE_PATH:path}));
+    for(const path of ['data/trial.sqlite:alternate','data/CON.sqlite','data/COM1.sqlite','data/LPT².sqlite','data/alias. /trial.sqlite','data/trial.sqlite.','C:trial.sqlite'])assert.throws(()=>readRuntimeConfig({...environment,PAPERMARKET_DATABASE_PATH:path}));
     assert.throws(()=>readRuntimeConfig({...environment,PAPERMARKET_BACKUP_DIRECTORY:'data/backups:alternate'}));
     assert.throws(()=>readRuntimeConfig({...environment,PAPERMARKET_BACKUP_MIRROR_DIRECTORY:'C:/mirror./backups'}));
   }
+  const syntheticSecret = 'synthetic-private-value!';
+  assert.throws(()=>readRuntimeConfig({...environment,DISCORD_BOT_TOKEN:syntheticSecret}),error=>
+    error instanceof Error && error.message==='Runtime configuration is invalid' && !error.message.includes(syntheticSecret));
+});
+
+test('read-only database configuration rejects linked directories and hardlinked files without needing Discord credentials', context => {
+  const root = directory(context), actual = join(root,'actual');
+  mkdirSync(actual);writeFileSync(join(actual,'trial.sqlite'),'synthetic');
+  assert.equal(readDatabasePath({PAPERMARKET_DATABASE_PATH:'actual/trial.sqlite'},root),join(actual,'trial.sqlite'));
+  symlinkSync(actual,join(root,'alias'),process.platform==='win32'?'junction':'dir');
+  assert.throws(()=>readDatabasePath({PAPERMARKET_DATABASE_PATH:'alias/trial.sqlite'},root),/links|aliases/);
+  linkSync(join(actual,'trial.sqlite'),join(root,'hardlinked.sqlite'));
+  assert.throws(()=>readDatabasePath({PAPERMARKET_DATABASE_PATH:'hardlinked.sqlite'},root),/independent/);
 });
 
 test('the real worker persists the economic seed and serves only public economic views after reopen', async (context) => {

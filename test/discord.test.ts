@@ -135,7 +135,7 @@ function assertBudget(view: ReplyView) {
 
 test('guild commands require explicit acknowledgements and minimal setup permission', () => {
   const commands = buildCommands().map((command) => command.toJSON());
-  assert.deepEqual(commands.map((command) => command.name), ['setup', 'open', 'market', 'company', 'news', 'calendar', 'chart', 'performance', 'export', 'alerts', 'economy', 'financial', 'buy', 'sell', 'orders', 'portfolio', 'history', 'status', 'help', 'privacy', 'close']);
+  assert.deepEqual(commands.map((command) => command.name), ['setup', 'open', 'market', 'company', 'news', 'calendar', 'chart', 'performance', 'export', 'alerts', 'economy', 'financial', 'buy', 'sell', 'orders', 'portfolio', 'funding', 'history', 'status', 'help', 'privacy', 'close']);
   for (const command of commands) assert.deepEqual(command.contexts, [InteractionContextType.Guild]);
   const setup = commands.find((command) => command.name === 'setup')!;
   assert.equal(setup.default_member_permissions, PermissionFlagsBits.ManageGuild.toString());
@@ -399,7 +399,7 @@ test('help/privacy and unconfirmed closure stay local and preserve the full poli
   const close = fakeInteraction({ command: 'close', booleans: { confirmed: false } });
   await handler(help.interaction); await handler(privacy.interaction); await handler(close.interaction);
   assert.equal(requests.length, 0); assert.match(prose(help.replies[0]!), /시험 이용약관/);
-  assert.match(prose(privacy.replies[0]!), /실사용자 계좌를 받기 전/); assert.match(prose(close.replies[0]!), /다시 열 수 없/);
+  assert.match(prose(privacy.replies[0]!), /개발 초안이며 법률·출시 검토 완료가 아닙니다/); assert.match(prose(close.replies[0]!), /다시 열 수 없/);
   for (const fake of [help, privacy, close]) assertBudget(fake.replies[0]!);
   const expected = renderPrivacyNotice(operator).split('\n\n');
   for (const paragraph of expected) assert.ok(prose(privacy.replies[0]!).includes(paragraph));

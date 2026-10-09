@@ -3,11 +3,11 @@ import {
   type ButtonInteraction, type ChatInputCommandInteraction, type Guild, type Interaction, type ModalSubmitInteraction, type TextChannel,
 } from 'discord.js';
 import type { Backend, ServiceContext, ServiceRequest, ServiceResponse } from '../application/contracts.js';
-import { parseOrderQuantity, parsePrice } from '../domain/numeric.js';
+import { parseMoney, parseOrderQuantity, parsePrice } from '../domain/numeric.js';
 import { renderAccountClosureNotice, renderPolicyNotice, renderPrivacyNotice, renderTermsNotice, validatePolicyOperator } from '../policy/index.js';
 import { COMMAND_NAMES } from './commands.js';
 import { baseEmbed, displayNumber, errorEmbed } from './messages.js';
-import { renderAlerts, renderEconomy, renderExport, renderFinancial, renderMarket, renderNews, renderNotice, renderServiceResponse, replyView, type ReplyView } from './render.js';
+import { renderAlerts, renderBuyChoices, renderEconomy, renderExport, renderFinancial, renderMarket, renderNews, renderNotice, renderServiceResponse, replyView, type ReplyView } from './render.js';
 import { companySelectionModal, tradeModal } from './forms.js';
 
 export type AdapterDiagnostic = 'ACK_FAILED' | 'REPLY_FAILED' | 'BACKEND_FAILED' | 'BOARD_FAILED' | 'BOARD_ORPHAN_CLEANUP_FAILED' | 'PREVIOUS_BOARD_ARCHIVE_FAILED';
@@ -24,7 +24,9 @@ const BUTTON_ROUTE = /^pm:(confirm|cancel):([A-Za-z0-9_-]{16,64})$/;
 const SCHEDULED_CANCEL_ROUTE = /^pm:ordercancel:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 const TRADE_ROUTE = /^pm:trade:(BUY|SELL):([A-Z][A-Z0-9]{0,11}):([1-9][0-9]{0,6})$/;
 const TRADE_FORM_ROUTE = /^pm:tradeform:(BUY|SELL):([A-Z][A-Z0-9]{0,11}):([1-9][0-9]{0,6})$/;
-const NAV_ROUTE = /^pm:view:(market|portfolio|performance|news|calendar|economy|orders|history|company|financial)(?::([A-Z][A-Z0-9]{0,11}):([1-9][0-9]{0,6}))?$/;
+const BUY_MENU_ROUTE = /^pm:buy:([A-Z][A-Z0-9]{0,11}):([1-9][0-9]{0,6})$/;
+const BUY_PRESET_ROUTE = /^pm:buyquote:(1000|5000|P50):([A-Z][A-Z0-9]{0,11}):([1-9][0-9]{0,6})$/;
+const NAV_ROUTE = /^pm:view:(market|portfolio|performance|funding|news|calendar|economy|orders|history|company|financial)(?::([A-Z][A-Z0-9]{0,11}):([1-9][0-9]{0,6}))?$/;
 const CHART_ROUTE = /^pm:chart:([A-Z][A-Z0-9]{0,11}):([1-9][0-9]{0,6}):(PRICE|TOTAL_RETURN):(LINEAR|LOG)$/;
 const NEWS_ROUTE = /^pm:news:(0|[1-9][0-9]{0,15}):(ALL|[A-Z][A-Z0-9]{0,11})$/;
 const NEWS_CURSOR_ROUTE = /^pm:news:([0-9a-f]{64})(?::([A-Z][A-Z0-9]{0,11}))?$/;
@@ -43,6 +45,18 @@ function generationValue(value: number | null): number | undefined {
   return value;
 }
 
+function positiveBudget(value: string): string {
+  try { if (parseMoney(value) <= 0n) throw new Error('INVALID_INPUT'); }
+  catch { throw new Error('INVALID_INPUT'); }
+  return value;
+}
+
+function budgetPercentValue(value: number | null): 25 | 50 | 100 | undefined {
+  if (value === null) return undefined;
+  if (value !== 25 && value !== 50 && value !== 100) throw new Error('INVALID_INPUT');
+  return value;
+}
+
 function selectedSetupChannel(interaction: ChatInputCommandInteraction): TextChannel | null {
   const selected = interaction.options.getChannel('channel', true);
   const channel = interaction.guild?.channels.resolve(selected.id);
@@ -55,6 +69,10 @@ function commandRequest(interaction: ChatInputCommandInteraction, context: Servi
     case 'open': return { type: 'open', context, age14Plus: interaction.options.getBoolean('age_14_plus', true),
       agreeTerms: interaction.options.getBoolean('agree_terms', true) };
     case 'market': case 'portfolio': case 'status': case 'orders': return { type: interaction.commandName, context };
+    case 'funding': {
+      const enabled = interaction.options.getBoolean('enabled');
+      return { type: 'funding', context, ...(enabled === null ? {} : { enabled }) };
+    }
     case 'history': return { type: 'history', context, limit: 4 };
     case 'company': {
       const symbol = validSymbol(interaction.options.getString('symbol', true));
@@ -104,6 +122,7 @@ function commandRequest(interaction: ChatInputCommandInteraction, context: Servi
       const symbol = interaction.options.getString('symbol', true);
       const quantity = interaction.options.getString('quantity');
       const budget = interaction.commandName === 'buy' ? interaction.options.getString('budget') : null;
+      const budgetPercent = interaction.commandName === 'buy' ? budgetPercentValue(interaction.options.getInteger('budget_percent')) : undefined;
       const all = interaction.commandName === 'sell' ? interaction.options.getBoolean('all') : null;
       const orderType = interaction.options.getString('order_type') ?? 'MARKET';
       const conditionPrice = interaction.options.getString('price');
@@ -114,12 +133,13 @@ function commandRequest(interaction: ChatInputCommandInteraction, context: Servi
       const side = interaction.commandName === 'buy' ? 'BUY' : 'SELL';
       if (orderType === 'MARKET') {
         if (conditionPrice !== null || timeInForceOption !== null || ticks !== null
-          || (side === 'BUY' ? Number(quantity !== null) + Number(budget !== null) !== 1
+          || (side === 'BUY' ? Number(quantity !== null) + Number(budget !== null) + Number(budgetPercent !== undefined) !== 1
             : Number(quantity !== null) + Number(all === true) !== 1)) throw new Error('INVALID_INPUT');
+        try { if (quantity !== null) parseOrderQuantity(quantity); if (budget !== null) positiveBudget(budget); } catch { throw new Error('INVALID_INPUT'); }
         return { type: 'quote', context, side, symbol, orderType,
-          ...(quantity === null ? {} : { quantity }), ...(budget === null ? {} : { budget }), ...(all === null ? {} : { all }) };
+          ...(quantity === null ? {} : { quantity }), ...(budget === null ? {} : { budget }), ...(budgetPercent === undefined ? {} : { budgetPercent }), ...(all === null ? {} : { all }) };
       }
-      if (quantity === null || conditionPrice === null || budget !== null || all !== null
+      if (quantity === null || conditionPrice === null || budget !== null || budgetPercent !== undefined || all !== null
         || (orderType === 'STOP' && side !== 'SELL')) throw new Error('INVALID_INPUT');
       try { parseOrderQuantity(quantity); parsePrice(conditionPrice); } catch { throw new Error('INVALID_INPUT'); }
       const timeInForce = timeInForceOption ?? 'TICK_COUNT';
@@ -241,7 +261,11 @@ export function createInteractionHandler(backend: Backend, options: HandlerOptio
       else {
         const context: ServiceContext = { guildId: interaction.guildId, discordUserId: interaction.user.id,
           interactionId: interaction.id, receivedAt, guildPermissions: interaction.memberPermissions?.bitfield.toString() ?? '0' };
-        if (interaction.isChatInputCommand() && interaction.commandName === 'help') {
+        if (interaction.isButton() && BUY_MENU_ROUTE.test(interaction.customId)) {
+          const buy = BUY_MENU_ROUTE.exec(interaction.customId)!;
+          if (Number(buy[2]) > 1_000_000) throw new Error('INVALID_INPUT');
+          view = renderBuyChoices(buy[1]!, Number(buy[2]));
+        } else if (interaction.isChatInputCommand() && interaction.commandName === 'help') {
           view = renderNotice('PaperMarket · 시험 이용약관', renderTermsNotice(operator));
         } else if (interaction.isChatInputCommand() && interaction.commandName === 'privacy') {
           view = renderNotice('PaperMarket · 개인정보 안내', renderPrivacyNotice(operator));
@@ -283,15 +307,21 @@ export function createInteractionHandler(backend: Backend, options: HandlerOptio
               const trade = TRADE_FORM_ROUTE.exec(modal.customId);
               if (!trade || Number(trade[3]) > 1_000_000) throw new Error('INVALID_INPUT');
               const side = trade[1] as 'BUY' | 'SELL'; const quantity = modal.fields.getTextInputValue('quantity').trim();
+              // A quantity-only modal opened before an update has no budget field; keep its existing route usable.
+              const budgetInput = side === 'BUY' && modal.fields.fields.has('budget') ? modal.fields.getTextInputValue('budget').trim() : '';
+              const percentage = /^(25|50|100)%$/.exec(budgetInput);
+              const budgetPercent = percentage ? budgetPercentValue(Number(percentage[1])) : undefined;
+              const budget = budgetInput && !percentage ? positiveBudget(budgetInput) : undefined;
               const orderType = modal.fields.getTextInputValue('order_type').trim().toUpperCase();
               const price = modal.fields.getTextInputValue('price').trim(); const duration = modal.fields.getTextInputValue('duration').trim().toUpperCase();
-              try { parseOrderQuantity(quantity); } catch { throw new Error('INVALID_INPUT'); }
+              try { if (quantity) parseOrderQuantity(quantity); } catch { throw new Error('INVALID_INPUT'); }
               if (orderType !== 'MARKET' && orderType !== 'LIMIT' && orderType !== 'STOP') throw new Error('INVALID_INPUT');
               if (orderType === 'MARKET') {
-                if (price || duration) throw new Error('INVALID_INPUT');
-                request = { type: 'quote', context, symbol: trade[2]!, generation: Number(trade[3]), side, quantity, orderType };
+                if (price || duration || Number(Boolean(quantity)) + Number(Boolean(budgetInput)) !== 1) throw new Error('INVALID_INPUT');
+                request = { type: 'quote', context, symbol: trade[2]!, generation: Number(trade[3]), side, orderType,
+                  ...(quantity ? { quantity } : {}), ...(budget === undefined ? {} : { budget }), ...(budgetPercent === undefined ? {} : { budgetPercent }) };
               } else {
-                if (!price || (orderType === 'STOP' && side === 'BUY')) throw new Error('INVALID_INPUT');
+                if (!quantity || budgetInput || !price || (orderType === 'STOP' && side === 'BUY')) throw new Error('INVALID_INPUT');
                 try { parsePrice(price); } catch { throw new Error('INVALID_INPUT'); }
                 const validForTicks = duration === 'UC' ? undefined : duration ? Number(duration) : 21;
                 if (validForTicks !== undefined && (!/^[0-9]{1,5}$/.test(duration || '21') || !Number.isInteger(validForTicks) || validForTicks < 1 || validForTicks > 10_000)) throw new Error('INVALID_INPUT');
@@ -301,7 +331,11 @@ export function createInteractionHandler(backend: Backend, options: HandlerOptio
             }
           } else if (interaction.isButton()) {
             const match = BUTTON_ROUTE.exec(interaction.customId);
-            if (match && (match[1] === 'confirm' || match[1] === 'cancel') && match[2]) {
+            const preset = BUY_PRESET_ROUTE.exec(interaction.customId);
+            if (preset && Number(preset[3]) <= 1_000_000) {
+              request = { type: 'quote', context, side: 'BUY', symbol: preset[2]!, generation: Number(preset[3]), orderType: 'MARKET',
+                ...(preset[1] === 'P50' ? { budgetPercent: 50 } : { budget: preset[1]! }) };
+            } else if (match && (match[1] === 'confirm' || match[1] === 'cancel') && match[2]) {
               request = { type: match[1], context, token: match[2] };
             } else {
               const scheduledCancel = SCHEDULED_CANCEL_ROUTE.exec(interaction.customId);
@@ -327,7 +361,7 @@ export function createInteractionHandler(backend: Backend, options: HandlerOptio
                   if (type === 'company' && nav[2] && nav[3]) request = { type, context, symbol: nav[2], generation: Number(nav[3]) };
                   else if (type === 'financial' && nav[2] && nav[3]) request = { type: 'company', context, symbol: nav[2], generation: Number(nav[3]) };
                   else if (type === 'history') request = { type, context, limit: 4 };
-                  else if (type === 'market' || type === 'portfolio' || type === 'performance' || type === 'calendar' || type === 'orders') request = { type, context };
+                  else if (type === 'market' || type === 'portfolio' || type === 'performance' || type === 'funding' || type === 'calendar' || type === 'orders') request = { type, context };
                   else if (type === 'news') request = { type, context };
                   else if (type === 'economy') request = { type: 'market', context };
                 }
@@ -338,7 +372,7 @@ export function createInteractionHandler(backend: Backend, options: HandlerOptio
           else {
             const response = await backend.execute(request);
             view = response.kind === 'ACCOUNT' ? renderNotice('PaperMarket · 모의계좌',
-              `${renderPolicyNotice(operator)}\n\n보유 현금 ${displayNumber(response.account.cash)} · 초기자금 10,000은 시장별 한 번\n/market → /buy 또는 /sell → 확인 → /portfolio · /history`)
+              `${renderPolicyNotice(operator)}\n\n보유 현금 ${displayNumber(response.account.cash)} · 초기자금 10,000은 시장별 한 번\n/market → 금액 매수 또는 /buy budget:1000 → 확인 → /portfolio · /history\n정기 모의 입금의 일정·누적액과 자동 입금 설정은 /funding에서 확인합니다.`)
               : response.kind === 'NEWS' ? renderNews(response.news, request.type === 'news' ? request.symbol : undefined)
                 : response.kind === 'EXPORT' ? renderExport(response.export, request.type === 'export' ? request.format : 'CSV')
                   : response.kind === 'ALERTS' ? renderAlerts(response.alerts, request.type === 'alerts' ? request.beforeId : undefined)

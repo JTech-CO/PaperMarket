@@ -574,6 +574,51 @@ const scheduledSql = `
   PRAGMA user_version=5;
 `;
 
+// Reuse the original definition without changing any recorded migration checksum.
+const contributionCashSql = foundationSql.slice(foundationSql.indexOf('  CREATE TABLE cash_journal ('), foundationSql.indexOf('  CREATE TABLE position_journal ('))
+  .replace("'REVERSAL','ROUNDING'", "'REVERSAL','ROUNDING','CONTRIBUTION'")
+  .replace("'LIQUIDATION','ROUNDING'", "'LIQUIDATION','ROUNDING','EXTERNAL_CAPITAL'")
+  .replace("CHECK(entry_type <> 'INITIAL_GRANT'", "CHECK(entry_type <> 'CONTRIBUTION' OR (account_delta_atoms = '1000000000000000' AND system_account = 'EXTERNAL_CAPITAL' AND related_order_id IS NULL)),\n    CHECK(entry_type <> 'INITIAL_GRANT'");
+const contributionsSql = `
+  DROP TRIGGER cash_journal_no_update;
+  DROP TRIGGER cash_journal_no_delete;
+  DROP INDEX cash_journal_account_sequence;
+  DROP INDEX cash_journal_one_initial_grant;
+  ALTER TABLE cash_journal RENAME TO cash_journal_v6;
+  ${contributionCashSql}
+  INSERT INTO cash_journal(rowid,journal_id,event_id,cause_id,market_id,account_id,entry_type,account_delta_atoms,system_delta_atoms,system_account,currency,tick_no,market_version,sequence_no,engine_version,ruleset_version,created_at,related_order_id)
+    SELECT rowid,journal_id,event_id,cause_id,market_id,account_id,entry_type,account_delta_atoms,system_delta_atoms,system_account,currency,tick_no,market_version,sequence_no,engine_version,ruleset_version,created_at,related_order_id FROM cash_journal_v6;
+  DROP TABLE cash_journal_v6;
+  CREATE UNIQUE INDEX cash_journal_one_contribution_per_tick ON cash_journal(market_id,account_id,tick_no) WHERE entry_type='CONTRIBUTION';
+  CREATE TABLE account_contribution_plans (
+    market_id TEXT NOT NULL, account_id TEXT NOT NULL,
+    start_tick INTEGER NOT NULL CHECK(start_tick BETWEEN 0 AND 9007199254740991),
+    interval_ticks INTEGER NOT NULL CHECK(interval_ticks=21),
+    amount_atoms TEXT NOT NULL CHECK(amount_atoms='1000000000000000'),
+    enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
+    PRIMARY KEY(market_id,account_id),
+    FOREIGN KEY(market_id,account_id) REFERENCES accounts(market_id,account_id)
+  ) STRICT;
+  INSERT INTO account_contribution_plans(market_id,account_id,start_tick,interval_ticks,amount_atoms,enabled)
+    SELECT a.market_id,a.account_id,m.tick_no,21,'1000000000000000',1 FROM accounts a JOIN markets m ON m.market_id=a.market_id WHERE a.status='ACTIVE';
+  CREATE TRIGGER contribution_plan_identity BEFORE UPDATE OF market_id,account_id,interval_ticks,amount_atoms ON account_contribution_plans
+    BEGIN SELECT RAISE(ABORT,'contribution policy is immutable'); END;
+  CREATE TRIGGER contribution_plan_no_delete BEFORE DELETE ON account_contribution_plans
+    BEGIN SELECT RAISE(ABORT,'contribution policy is persistent'); END;
+  CREATE TABLE contribution_valuations (
+    market_id TEXT NOT NULL, account_id TEXT NOT NULL,event_id TEXT NOT NULL,
+    tick_no INTEGER NOT NULL CHECK(tick_no BETWEEN 1 AND 9007199254740991),
+    sequence_no INTEGER NOT NULL CHECK(sequence_no BETWEEN 1 AND 9007199254740991),
+    before_equity_atoms TEXT NOT NULL CHECK(length(before_equity_atoms) BETWEEN 1 AND 50 AND (before_equity_atoms='0' OR (before_equity_atoms GLOB '[1-9]*' AND before_equity_atoms NOT GLOB '*[^0-9]*'))),
+    amount_atoms TEXT NOT NULL CHECK(amount_atoms='1000000000000000'),
+    PRIMARY KEY(market_id,account_id,event_id),UNIQUE(market_id,account_id,tick_no),
+    FOREIGN KEY(market_id,account_id,event_id) REFERENCES cash_journal(market_id,account_id,event_id)
+  ) STRICT;
+  CREATE TRIGGER contribution_valuation_no_update BEFORE UPDATE ON contribution_valuations BEGIN SELECT RAISE(ABORT,'append-only contribution'); END;
+  CREATE TRIGGER contribution_valuation_no_delete BEFORE DELETE ON contribution_valuations BEGIN SELECT RAISE(ABORT,'append-only contribution'); END;
+  PRAGMA user_version=7;
+`;
+
 export const migrations: readonly Migration[] = Object.freeze([
   Object.freeze({ version: 1, name: 'foundation', sql: foundationSql }),
   Object.freeze({ version: 2, name: 'broker', sql: brokerSql }),
@@ -581,6 +626,7 @@ export const migrations: readonly Migration[] = Object.freeze([
   Object.freeze({ version: 4, name: 'corporate-rights', sql: rightsSql }),
   Object.freeze({ version: 5, name: 'conditional-orders', sql: scheduledSql }),
   Object.freeze({ version: 6, name: 'reporting-notifications', sql: benchmarkSchemaSql + reportingSchemaSql + notificationSchemaSql + '\nPRAGMA user_version=6;\n' }),
+  Object.freeze({ version: 7, name: 'external-contributions', sql: contributionsSql }),
 ]);
 
 export class MigrationIntegrityError extends Error {

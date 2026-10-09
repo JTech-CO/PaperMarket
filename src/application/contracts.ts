@@ -14,6 +14,7 @@ export type ServiceRequest =
   | { readonly type: 'setup'; readonly context: ServiceContext; readonly channelId: string }
   | { readonly type: 'save-board'; readonly context: ServiceContext; readonly channelId: string; readonly messageId: string }
   | { readonly type: 'open'; readonly context: ServiceContext; readonly age14Plus: boolean; readonly agreeTerms: boolean }
+  | { readonly type: 'funding'; readonly context: ServiceContext; readonly enabled?: boolean }
   | { readonly type: 'market' | 'portfolio' | 'status' | 'orders'; readonly context: ServiceContext }
   | { readonly type:'company';readonly context:ServiceContext;readonly symbol:string;readonly generation?:number }
   | { readonly type:'news';readonly context:ServiceContext;readonly beforeTick?:number;readonly symbol?:string;readonly cursor?:string }
@@ -24,7 +25,7 @@ export type ServiceRequest =
   | { readonly type:'cancel-order';readonly context:ServiceContext;readonly orderId:string }
   | { readonly type: 'history'; readonly context: ServiceContext; readonly limit?: number;readonly beforeSequence?:number;readonly beforeEventId?:string }
   | { readonly type: 'quote'; readonly context: ServiceContext; readonly symbol: string;
-      readonly side: 'BUY' | 'SELL'; readonly quantity?: string; readonly budget?: string; readonly all?: boolean;readonly generation?:number;
+      readonly side: 'BUY' | 'SELL'; readonly quantity?: string; readonly budget?: string; readonly budgetPercent?: 25 | 50 | 100; readonly all?: boolean;readonly generation?:number;
       readonly orderType?:'MARKET'|'LIMIT'|'STOP';readonly conditionPrice?:string;readonly timeInForce?:'TICK_COUNT'|'UNTIL_CANCELLED';readonly validForTicks?:number }
   | { readonly type: 'confirm' | 'cancel'; readonly context: ServiceContext; readonly token: string }
   | { readonly type: 'close'; readonly context: ServiceContext; readonly confirmed: boolean }
@@ -112,6 +113,8 @@ export interface PortfolioView {
   readonly account: AccountView; readonly marketVersion: number;
   readonly positions: readonly PositionView[];
   readonly equity: string; readonly totalReturnPct: string;
+  readonly initialCapital?: string; readonly contributions?: string; readonly netInvestmentPnl?: string;
+  readonly nextContributionTick?: number | null;
   readonly accruedCashInterest?: string; readonly cashInterestTotal?: string;
   readonly rights?: readonly RightsView[];
   readonly dividendTotal?: string; readonly liquidationTotal?: string;
@@ -145,13 +148,15 @@ export interface ChartView extends PublicViewMeta {
 }
 export interface PerformanceView extends PublicViewMeta {
   readonly equity:string;readonly totalReturnPct:string;readonly previousTickChangePct:string|null;readonly maxDrawdownPct:string;
+  readonly initialCapital?: string; readonly contributions?: string; readonly netInvestmentPnl?: string;
+  readonly nextContributionTick?: number | null;
   readonly realizedPnl:string;readonly unrealizedPnl:string;readonly fees:string;readonly cashInterest:string;readonly dividends:string;
   readonly liquidation:string;readonly otherRightsPnl:string;readonly rounding:string;readonly reconciled:boolean;readonly cashWeightPct:string;
   readonly startedTick:number;readonly currentTick:number;readonly missingHistory:boolean;readonly sampleCount:number;
   readonly drawdownDefinition:string;readonly baselines:BenchmarkComparison;readonly pm8:BenchmarkView;
 }
 export interface HistoryEntry {
-  readonly eventId:string;readonly kind:'FILL'|'DIVIDEND'|'INTEREST'|'LIQUIDATION'|'CORRECTION'|'INITIAL_GRANT';
+  readonly eventId:string;readonly kind:'FILL'|'DIVIDEND'|'INTEREST'|'LIQUIDATION'|'CORRECTION'|'INITIAL_GRANT'|'CONTRIBUTION';
   readonly tickNo:number;readonly sequenceNo:number;readonly marketVersion:number;readonly createdAt:string;
   readonly symbol:string|null;readonly title:string;readonly amount:string;
 }
@@ -160,6 +165,10 @@ export interface ExportView {
   readonly recordCount:number;readonly nextBeforeSequence:number|null;readonly nextBeforeEventId?:string|null;readonly truncated:boolean;
 }
 export interface AlertsView {readonly settings:AlertSettingsView;readonly inbox:InboxView;readonly dmEnabled:boolean}
+export interface FundingView {
+  readonly enabled: boolean; readonly amount: string; readonly intervalTicks: number;
+  readonly startTick: number; readonly nextContributionTick: number | null; readonly contributions: string;
+}
 export type ServiceErrorCode =
   | 'INVALID_INPUT' | 'PERMISSION_DENIED' | 'MARKET_NOT_FOUND' | 'MARKET_PAUSED' | 'MARKET_UPDATING'
   | 'ACCOUNT_NOT_FOUND' | 'ACCOUNT_CLOSED' | 'ACKNOWLEDGEMENTS_REQUIRED'
@@ -170,6 +179,7 @@ export type ServiceResponse =
   | { readonly kind: 'SETUP'; readonly market: MarketView; readonly previousBoard?: { readonly channelId: string; readonly messageId: string } }
   | { readonly kind: 'MARKET' | 'STATUS'; readonly market: MarketView }
   | { readonly kind: 'ACCOUNT'; readonly account: AccountView }
+  | { readonly kind: 'FUNDING'; readonly funding: FundingView }
   | { readonly kind: 'QUOTE'; readonly quote: QuoteView }
   | { readonly kind: 'FILLED'; readonly fill: FillView }
   | { readonly kind:'ORDER_OPENED';readonly order:ScheduledOrderView }

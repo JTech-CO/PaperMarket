@@ -5,6 +5,7 @@ import Database from 'better-sqlite3';
 import { BrokerRepository } from '../src/broker/repository.js';
 import { FakeClock } from '../src/domain/clock.js';
 import { FinancialDecimal as D,parseMoney } from '../src/domain/numeric.js';
+import { capitalReturnFactor, linkCapitalFlows } from '../src/domain/capital.js';
 import type { ServiceContext, ServiceRequest, ServiceResponse } from '../src/application/contracts.js';
 import { migrateDatabase } from '../src/storage/migrations.js';
 import { csvCell, ReportingRepository } from '../src/reporting/repository.js';
@@ -108,4 +109,49 @@ test('history cursor traverses more than one page of same-sequence payouts witho
   }
   assert.equal(ids.length,9);assert.equal(new Set(ids).size,9);
   assert.throws(()=>reporting.history(owner,4,0,'another_owner_event'),/INVALID_CURSOR/);
+});
+
+test('linked returns remove external funding at its exact boundary and preserve losses across contributions',()=>{
+  const linked=linkCapitalFlows('10000',[
+    {eventId:'first',tickNo:21,sequenceNo:22,beforeEquity:'8000',amount:'1000'},
+    {eventId:'second',tickNo:42,sequenceNo:43,beforeEquity:'9900',amount:'1000'},
+  ]);
+  assert.equal(capitalReturnFactor('10000','8000',linked,20),'0.8');
+  assert.equal(capitalReturnFactor('10000','9000',linked,21),'0.8');
+  assert.equal(capitalReturnFactor('10000','9900',linked,41),'0.88');
+  assert.equal(capitalReturnFactor('10000','10900',linked,42),'0.88');
+  assert.equal(capitalReturnFactor('10000','11990',linked,43),'0.968');
+  assert.equal(capitalReturnFactor('10000','10100',[],5),'1.01');
+  const exhausted=linkCapitalFlows('10000',[{eventId:'new_funding',tickNo:21,sequenceNo:22,beforeEquity:'0',amount:'1000'}]);
+  assert.equal(capitalReturnFactor('10000','1100',exhausted,22),'0');
+  assert.throws(()=>linkCapitalFlows('10000',[{eventId:'negative',tickNo:21,sequenceNo:22,beforeEquity:'10000',amount:'-1'}]),/checkpoint/);
+});
+
+test('real contributions stay external to profit, sampled drawdown, history and owner exports',t=>{
+  const f=fixture(t,false);f.trade('BUY');
+  for(let tick=0;tick<21;tick++)f.tick();
+  const first=kind(f.execute({type:'performance'}),'PERFORMANCE').performance;
+  assert.equal(first.equity,'10999');assert.equal(first.initialCapital,'10000');assert.equal(first.contributions,'1000');assert.equal(first.netInvestmentPnl,'-1');
+  assert.equal(first.totalReturnPct,'-0.01');assert.equal(first.previousTickChangePct,'0');assert.equal(first.maxDrawdownPct,'0.01');assert.equal(first.nextContributionTick,42);assert.equal(first.reconciled,true);
+  const sums=[first.realizedPnl,first.unrealizedPnl,first.dividends,first.cashInterest,first.liquidation,first.otherRightsPnl,first.rounding].reduce((sum,amount)=>sum+parseMoney(amount),0n);
+  assert.equal(sums,parseMoney(first.netInvestmentPnl!));
+  f.tick();const sampled=kind(f.execute({type:'performance'}),'PERFORMANCE').performance;
+  assert.equal(sampled.maxDrawdownPct,first.maxDrawdownPct);assert.equal(sampled.totalReturnPct,first.totalReturnPct);
+  f.reopen();assert.deepEqual(kind(f.execute({type:'performance'}),'PERFORMANCE').performance,sampled);
+  const history=kind(f.execute({type:'history'}),'HISTORY').entries??[];
+  assert.equal(history.filter(entry=>entry.kind==='CONTRIBUTION').length,1);assert.equal(history.find(entry=>entry.kind==='CONTRIBUTION')?.amount,'1000');
+  const exported=kind(f.execute({type:'export',format:'JSON'} as never),'EXPORT').export;
+  const payload=JSON.parse(exported.files[0]!.content) as {performance:{contributions:string;netInvestmentPnl:string};funding:{enabled:boolean;startTick:number;intervalTicks:number;amount:string;nextContributionTick:number};history:Array<{kind:string}>};
+  assert.equal(payload.performance.contributions,'1000');assert.equal(payload.performance.netInvestmentPnl,'-1');assert.ok(payload.history.some(entry=>entry.kind==='CONTRIBUTION'));
+  assert.deepEqual(payload.funding,{enabled:true,startTick:0,intervalTicks:21,amount:'1000',nextContributionTick:42});
+  const csv=kind(f.execute({type:'export',format:'CSV'} as never),'EXPORT').export;
+  assert.match(csv.files.find(file=>file.name==='account.csv')!.content,/"initial_capital","contributions","net_investment_pnl"/);
+  assert.match(csv.files.find(file=>file.name==='account.csv')!.content,/"funding_enabled","funding_start_tick","funding_interval_ticks","funding_amount"/);
+  assert.equal(f.execute({type:'performance'},other).kind,'ERROR');
+  const owner=f.db.prepare('SELECT market_id FROM accounts WHERE account_id=?').get(f.accountId) as {market_id:string};
+  const reporting=new ReportingRepository(f.db,new ReportingBenchmarks(f.db));
+  assert.throws(()=>reporting.capitalPerformance({...owner,marketId:owner.market_id,accountId:f.accountId,discordUserId:other},'10999',22),/owner unavailable/);
+  f.db.exec('DROP TRIGGER contribution_valuation_no_update');
+  f.db.prepare('UPDATE contribution_valuations SET tick_no=22 WHERE account_id=?').run(f.accountId);
+  assert.throws(()=>reporting.capitalPerformance({marketId:owner.market_id,accountId:f.accountId,discordUserId:user},'10999',22),/does not match its journal/);
 });

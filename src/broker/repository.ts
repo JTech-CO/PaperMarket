@@ -25,6 +25,7 @@ import { EconomyRepository, projectEconomyView, type EconomySnapshot } from '../
 import type { PublicDisclosureRecord } from '../economy/public.js';
 import { RightsRepository } from '../rights/repository.js';
 import { ScheduledRepository, type ScheduledRow, type ConditionalIntent } from './scheduled.js';
+import { ContributionRepository, CONTRIBUTION_AMOUNT_ATOMS } from './contributions.js';
 import { ReportingBenchmarks } from '../reporting/benchmarks.js';
 import { ReportingRepository } from '../reporting/repository.js';
 import { NotificationRepository, NotificationAccessError, NotificationInputError } from '../notifications/repository.js';
@@ -41,6 +42,7 @@ const requestSchema = z.discriminatedUnion('type', [
   z.strictObject({ ...context, type: z.literal('setup'), channelId: discordSnowflakeSchema }),
   z.strictObject({ ...context, type: z.literal('save-board'), channelId: discordSnowflakeSchema, messageId: discordSnowflakeSchema }),
   z.strictObject({ ...context, type: z.literal('open'), age14Plus: z.boolean(), agreeTerms: z.boolean() }),
+  z.strictObject({ ...context, type: z.literal('funding'), enabled: z.boolean().optional() }),
   z.strictObject({ ...context, type: z.enum(['market', 'portfolio', 'status','orders']) }),
   z.strictObject({...context,type:z.literal('company'),symbol:z.string().max(12).regex(/^[A-Za-z][A-Za-z0-9]{0,11}$/),generation:z.number().int().min(1).max(1000000).optional()}),
   z.strictObject({...context,type:z.literal('news'),symbol:z.string().max(12).regex(/^[A-Za-z][A-Za-z0-9]{0,11}$/).optional(),beforeTick:z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),cursor:z.string().regex(/^[a-f0-9]{64}$/).optional()}),
@@ -52,7 +54,7 @@ const requestSchema = z.discriminatedUnion('type', [
   z.strictObject({ ...context, type: z.literal('history'), limit: z.number().int().min(1).max(25).optional(),beforeSequence:z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(),beforeEventId:z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/).optional() }),
   z.strictObject({ ...context, type: z.literal('quote'), symbol: z.string().max(12).regex(/^[A-Za-z][A-Za-z0-9]{0,11}$/),
     side: z.enum(['BUY','SELL']), generation:z.number().int().min(1).max(1000000).optional(),quantity: z.string().min(1).max(64).optional(),
-    budget: z.string().min(1).max(64).optional(), all: z.boolean().optional(),orderType:z.enum(['MARKET','LIMIT','STOP']).optional(),conditionPrice:z.string().min(1).max(128).optional(),timeInForce:z.enum(['TICK_COUNT','UNTIL_CANCELLED']).optional(),validForTicks:z.number().int().min(1).max(10000).optional() }),
+    budget: z.string().min(1).max(64).optional(), budgetPercent:z.union([z.literal(25),z.literal(50),z.literal(100)]).optional(), all: z.boolean().optional(),orderType:z.enum(['MARKET','LIMIT','STOP']).optional(),conditionPrice:z.string().min(1).max(128).optional(),timeInForce:z.enum(['TICK_COUNT','UNTIL_CANCELLED']).optional(),validForTicks:z.number().int().min(1).max(10000).optional() }),
   z.strictObject({ ...context, type: z.enum(['confirm','cancel']), token: z.string().length(43).regex(/^[A-Za-z0-9_-]+$/) }),
   z.strictObject({ ...context, type: z.literal('close'), confirmed: z.boolean() }),
   z.strictObject({ type: z.enum(['tick','recover']), now: utcTimestampSchema }),
@@ -92,7 +94,7 @@ const economyViewSchema=z.strictObject({engineVersion:z.string().max(32),economy
 const marketViewSchema = z.strictObject({ marketId:id,state:z.enum(['INITIALIZING','OPEN','UPDATING','PAUSED','RECOVERING','ARCHIVED']),
   tickNo:counter,marketVersion:counter,sequenceNo:counter,nextBoundaryAt:utcTimestampSchema,updatedAt:utcTimestampSchema,
   priceSource:z.enum(['TRIAL','ECONOMY']),channelId:discordSnowflakeSchema.nullable(),boardMessageId:discordSnowflakeSchema.nullable(),
-  pm8:z.strictObject({kind:z.literal('PM8'),startTick:counter,tickNo:counter,equity:cash,cash,totalReturnPct:decimal,fees:cash,cashInterest:cash,dividends:cash,liquidationReceipts:cash,receivables:cash,openingPolicy:z.literal('MARKET_ADOPTION'),index:decimal}).optional(),
+  pm8:z.strictObject({kind:z.literal('PM8'),startTick:counter,tickNo:counter,equity:cash,cash,initialCapital:cash.optional(),contributions:cash.optional(),netInvestmentPnl:cash.optional(),contributionPolicy:z.string().max(256).optional(),totalReturnPct:decimal,fees:cash,cashInterest:cash,dividends:cash,liquidationReceipts:cash,receivables:cash,openingPolicy:z.literal('MARKET_ADOPTION'),index:decimal}).optional(),
   listings:z.array(z.strictObject({listingId:id,symbol,name:z.string().min(1).max(100),slotId:z.enum(['O1','O2','O3','G1','G2','T1','T2','D1']),
     category:z.enum(['ORDINARY','GROWTH','THEMATIC','DIVIDEND']),price:decimal,changePct:decimal.optional(),generation:counter.min(1).optional(),lifecycle:z.string().max(32).optional()})).max(8),economy:economyViewSchema.optional() });
 const responseSchema = z.discriminatedUnion('kind', [
@@ -100,6 +102,7 @@ const responseSchema = z.discriminatedUnion('kind', [
     previousBoard:z.strictObject({channelId:discordSnowflakeSchema,messageId:discordSnowflakeSchema}).optional()}),
   z.strictObject({kind:z.enum(['MARKET','STATUS']),market:marketViewSchema}),
   z.strictObject({kind:z.literal('ACCOUNT'),account:accountViewSchema}),
+  z.strictObject({kind:z.literal('FUNDING'),funding:z.strictObject({enabled:z.boolean(),amount:cash,intervalTicks:z.literal(21),startTick:counter,nextContributionTick:counter.nullable(),contributions:cash})}),
   z.strictObject({kind:z.literal('QUOTE'),quote:quoteViewSchema}),
   z.strictObject({kind:z.literal('FILLED'),fill:fillViewSchema}),
   z.strictObject({kind:z.enum(['ORDER_OPENED','SCHEDULED_CANCELLED']),order:scheduledViewSchema}),
@@ -110,7 +113,7 @@ const responseSchema = z.discriminatedUnion('kind', [
   z.strictObject({kind:z.literal('BOARD_SAVED')}),
   z.strictObject({kind:z.literal('PORTFOLIO'),portfolio:z.strictObject({account:accountViewSchema,marketVersion:counter,
     positions:z.array(z.strictObject({listingId:id,symbol,name:z.string().min(1).max(100),quantity:decimal,price:decimal,value:cash,cost:cash,unrealizedPnl:cash,availableQuantity:decimal.optional(),reservedQuantity:decimal.optional()})).max(8),
-    equity:cash,totalReturnPct:decimal,accruedCashInterest:cash.optional(),cashInterestTotal:cash.optional(),dividendTotal:cash.optional(),liquidationTotal:cash.optional(),availableCash:cash.optional(),reservedCash:cash.optional(),
+    equity:cash,totalReturnPct:decimal,initialCapital:cash.optional(),contributions:cash.optional(),netInvestmentPnl:cash.optional(),nextContributionTick:counter.nullable().optional(),accruedCashInterest:cash.optional(),cashInterestTotal:cash.optional(),dividendTotal:cash.optional(),liquidationTotal:cash.optional(),availableCash:cash.optional(),reservedCash:cash.optional(),
     rights:z.array(z.strictObject({rightId:z.string().max(256),kind:z.enum(['DIVIDEND','LIQUIDATION']),symbol,status:z.enum(['ATTACHED','OPEN','IMPAIRED','SETTLED']),quantity:decimal,
       nominal:cash,currentValue:cash,paid:cash,cost:cash,realizedPnl:cash,eligibleTick:counter,paymentTick:counter})).max(100000).optional()})}),
 ]);
@@ -172,6 +175,7 @@ export class BrokerRepository {
   readonly #identityKey: Buffer;
   readonly #economy: EconomyRepository | undefined;
   readonly #scheduled: ScheduledRepository;
+  readonly #contributions: ContributionRepository;
   readonly #benchmarks:ReportingBenchmarks;
   readonly #reporting:ReportingRepository;
   readonly #notifications:NotificationRepository;
@@ -183,6 +187,7 @@ export class BrokerRepository {
       throw new TypeError('A persistent server identity key of at least 32 bytes is required.');
     }
     this.#db = db; this.#clock = clock; this.#foundation = new FoundationRepository(db, clock);this.#scheduled=new ScheduledRepository(db);
+    this.#contributions=new ContributionRepository(db);
     this.#benchmarks=new ReportingBenchmarks(db);this.#reporting=new ReportingRepository(db,this.#benchmarks);this.#notifications=new NotificationRepository(db,clock);
     this.#identityKey = Buffer.from(options.identityKey);
     if(options.economySeed===undefined&&(db.prepare('SELECT COUNT(*) AS count FROM economy_markets').get() as {count:number}).count>0) {
@@ -199,6 +204,7 @@ export class BrokerRepository {
         JOIN markets m ON m.market_id = a.market_id WHERE a.status = 'ACTIVE'`).all() as
         Array<{ account_id: string; market_id: string; discord_user_id: string; guild_id: string }>;
       for (const account of accounts) {
+        this.#contributions.initialize(account.market_id,account.account_id,this.#market(account.market_id).tick_no);
         const hash = this.#subject(account.guild_id, account.discord_user_id);
         db.prepare('INSERT OR IGNORE INTO account_subjects(market_id,subject_hash,account_id,closed_at) VALUES(?,?,?,NULL)')
           .run(account.market_id, hash, account.account_id);
@@ -314,6 +320,7 @@ export class BrokerRepository {
       const account = this.#foundation.openAccount({ marketId: market.market_id,
         discordUserId: request.context.discordUserId, interactionId: request.context.interactionId });
       if(this.#economy) this.#economy.initializeAccount(market.market_id,account.accountId,market.tick_no,account.cashAtoms,this.#elapsed(market,now));
+      this.#contributions.initialize(market.market_id,account.accountId,market.tick_no);
       this.#benchmarks.initializeAccount(market.market_id,account.accountId,this.#elapsed(market,now));
       this.#db.prepare('INSERT OR IGNORE INTO account_subjects(market_id,subject_hash,account_id,closed_at) VALUES(?,?,?,NULL)')
         .run(market.market_id, actorHash, account.accountId);
@@ -324,6 +331,10 @@ export class BrokerRepository {
     }
     const account = this.#ownedAccount(market.market_id, request.context.discordUserId, actorHash);
     const owner={marketId:market.market_id,accountId:account.accountId,discordUserId:request.context.discordUserId};
+    if(request.type==='funding') {
+      if(request.enabled!==undefined)this.#contributions.set(owner,market.tick_no,request.enabled);
+      return {kind:'FUNDING',funding:this.#contributions.view(owner,market.tick_no)};
+    }
     if(request.type==='performance')return {kind:'PERFORMANCE',performance:this.#reporting.performance(owner,this.#marketView(market,snapshot),this.#portfolio(market,account),this.#elapsed(market,now))};
     if(request.type==='export')return {kind:'EXPORT',export:this.#reporting.export(owner,this.#marketView(market,snapshot),this.#portfolio(market,account),request.format,request.limit??500,request.beforeSequence,this.#elapsed(market,now),request.beforeEventId)};
     if(request.type==='alerts') {
@@ -425,20 +436,20 @@ export class BrokerRepository {
     const listing = this.#listingBySymbol(market.market_id, request.symbol.toUpperCase());
     if(request.generation!==undefined&&this.#reporting.company(this.#marketView(market),listing.symbol).generation!==request.generation)reject('LISTING_NOT_TRADABLE');
     const replay = this.#foundation.replayAccount(accountScope(account));
-    const choices = Number(request.quantity !== undefined) + Number(request.budget !== undefined) + Number(request.all === true);
-    if (choices !== 1 || (request.side === 'BUY' && request.all === true) || (request.side === 'SELL' && request.budget !== undefined)) reject('INVALID_INPUT');
+    const choices = Number(request.quantity !== undefined) + Number(request.budget !== undefined) + Number(request.budgetPercent !== undefined) + Number(request.all === true);
+    if (choices !== 1 || (request.side === 'BUY' && request.all === true) || (request.side === 'SELL' && (request.budget !== undefined || request.budgetPercent !== undefined))) reject('INVALID_INPUT');
     const orderType=request.orderType??'MARKET';let terms:ConditionalIntent|undefined;
     if(orderType==='MARKET') {if(request.conditionPrice!==undefined||request.timeInForce!==undefined||request.validForTicks!==undefined) reject('INVALID_INPUT');}
     else {
-      if(request.quantity===undefined||request.budget!==undefined||request.all!==undefined||request.conditionPrice===undefined||orderType==='STOP'&&request.side!=='SELL'||request.timeInForce==='UNTIL_CANCELLED'&&request.validForTicks!==undefined) reject('INVALID_INPUT');
+      if(request.quantity===undefined||request.budget!==undefined||request.budgetPercent!==undefined||request.all!==undefined||request.conditionPrice===undefined||orderType==='STOP'&&request.side!=='SELL'||request.timeInForce==='UNTIL_CANCELLED'&&request.validForTicks!==undefined) reject('INVALID_INPUT');
       terms={order_type:orderType,condition_price:parsePrice(request.conditionPrice),time_in_force:request.timeInForce??'TICK_COUNT',valid_for_ticks:request.timeInForce==='UNTIL_CANCELLED'?null:request.validForTicks??21};
       if(terms.valid_for_ticks!==null) boundedCounter(market.tick_no+terms.valid_for_ticks);
     }
     const reserved=this.#scheduled.reservations(market.market_id,account.accountId);
     let quantity: Quantity;
     if (request.quantity !== undefined) quantity = parseOrderQuantity(request.quantity);
-    else if (request.budget !== undefined) {
-      const budget = parseMoney(request.budget);
+    else if (request.budget !== undefined || request.budgetPercent !== undefined) {
+      const budget = request.budgetPercent===undefined?parseMoney(request.budget!):moneyFromAtoms(((replay.cashAtoms-reserved.cash)*BigInt(request.budgetPercent)/100n).toString());
       if (budget <= 0n) reject('INVALID_INPUT');
       if (budget > replay.cashAtoms-reserved.cash) reject('INSUFFICIENT_CASH');
       quantity = maxAffordableQuantity(budget, parsePrice(listing.price), STANDARD_RULESET.tradeFeeRate);
@@ -647,10 +658,12 @@ export class BrokerRepository {
     if(rights) equity=addFractions(equity,rights.asset);
     if(this.#economy) equity=addFractions(equity,this.#economy.unpaidInterest(market.market_id,account.accountId,market.tick_no,this.#elapsed(market,now)));
     const equityMoney = quantizeMoney(equity, 'floor').money;
-    const returnPct = new FinancialDecimal(moneyText(equityMoney)).div('10000').minus('1').times('100').toString();
+    const owner={marketId:market.market_id,accountId:account.accountId,discordUserId:account.discordUserId};
+    const capital=this.#reporting.capitalPerformance(owner,moneyText(equityMoney),market.tick_no);
+    const funding=this.#contributions.view(owner,market.tick_no);
     const interest=this.#economy?.interestView(market.market_id,account.accountId,market.tick_no,this.#elapsed(market,now));
     return { account: this.#accountView(account), marketVersion: market.market_version, positions,
-      equity: moneyText(equityMoney), totalReturnPct: returnPct,availableCash:moneyText(replay.cashAtoms-reserved.cash),reservedCash:moneyText(reserved.cash),...interest,...(rights?{rights:rights.rights,dividendTotal:rights.dividendTotal,liquidationTotal:rights.liquidationTotal}:{}) };
+      equity: moneyText(equityMoney), ...capital,nextContributionTick:funding.nextContributionTick,availableCash:moneyText(replay.cashAtoms-reserved.cash),reservedCash:moneyText(reserved.cash),...interest,...(rights?{rights:rights.rights,dividendTotal:rights.dividendTotal,liquidationTotal:rights.liquidationTotal}:{}) };
   }
 
   #assets(marketId:string,side: 'BUY' | 'SELL', replay: ReplayedAccount, listingId: string, quantity: string, total: bigint,exclude?:string): void {
@@ -781,8 +794,12 @@ export class BrokerRepository {
     if (!parsed.success) throw new LedgerIntegrityError('Malformed cached command response.');
     const response = parsed.data;
     const expectedKinds:Readonly<Record<string,readonly string[]>>={setup:['SETUP'],open:['ACCOUNT'],market:['MARKET'],status:['STATUS'],
-      portfolio:['PORTFOLIO'],history:['HISTORY'],quote:['QUOTE'],confirm:['FILLED','ORDER_OPENED','SCHEDULED_CANCELLED'],cancel:['CANCELLED','FILLED','SCHEDULED_CANCELLED'],close:['CLOSED'],'cancel-order':['SCHEDULED_CANCELLED'],'save-board':['BOARD_SAVED']};
+      portfolio:['PORTFOLIO'],history:['HISTORY'],quote:['QUOTE'],funding:['FUNDING'],confirm:['FILLED','ORDER_OPENED','SCHEDULED_CANCELLED'],cancel:['CANCELLED','FILLED','SCHEDULED_CANCELLED'],close:['CLOSED'],'cancel-order':['SCHEDULED_CANCELLED'],'save-board':['BOARD_SAVED']};
     if(!expectedKinds[request.type]?.includes(response.kind)) throw new LedgerIntegrityError('Cached response belongs to another command type.');
+    if(response.kind==='FUNDING') {
+      const market=this.#marketByGuild(request.context.guildId);const account=this.#ownedAccount(market.market_id,request.context.discordUserId,actorHash);
+      return {kind:'FUNDING',funding:this.#contributions.view({marketId:market.market_id,accountId:account.accountId,discordUserId:request.context.discordUserId},market.tick_no)};
+    }
     if (response.kind === 'QUOTE') {
       const market = this.#marketByGuild(request.context.guildId);
       const account = this.#ownedAccount(market.market_id, request.context.discordUserId, actorHash);
@@ -829,6 +846,24 @@ export class BrokerRepository {
   }
 
   /** Internal deterministic trial provider. Polling before the boundary never changes prices or versions. */
+  #payContributions(marketId:string,now:string):void {
+    for(const owner of this.#contributions.due(marketId,this.#market(marketId).tick_no)) {
+      const market=this.#market(marketId);
+      const account=this.#foundation.getAccount({marketId,discordUserId:owner.discordUserId});
+      if(!account||account.status!=='ACTIVE'||account.accountId!==owner.accountId)throw new LedgerIntegrityError();
+      const beforeEquity=parseMoney(this.#portfolio(market,account,now).equity);
+      const afterCash=moneyFromAtoms((BigInt(account.cashAtoms)+CONTRIBUTION_AMOUNT_ATOMS).toString());
+      const sequence=this.#sequence(market);const eventId=randomUUID();
+      this.#db.prepare("INSERT INTO cash_journal(journal_id,event_id,cause_id,market_id,account_id,entry_type,account_delta_atoms,system_delta_atoms,system_account,currency,tick_no,market_version,sequence_no,engine_version,ruleset_version,created_at,related_order_id) VALUES(?,?,?,?,?,'CONTRIBUTION',?,?,'EXTERNAL_CAPITAL','PAPERMARKET_POINT',?,?,?,?,?,?,NULL)")
+        .run(randomUUID(),eventId,eventId,marketId,account.accountId,CONTRIBUTION_AMOUNT_ATOMS.toString(),(-CONTRIBUTION_AMOUNT_ATOMS).toString(),market.tick_no,market.market_version,sequence,market.engine_version,market.ruleset_version,now);
+      this.#db.prepare('INSERT INTO contribution_valuations(market_id,account_id,event_id,tick_no,sequence_no,before_equity_atoms,amount_atoms) VALUES(?,?,?,?,?,?,?)')
+        .run(marketId,account.accountId,eventId,market.tick_no,sequence,beforeEquity.toString(),CONTRIBUTION_AMOUNT_ATOMS.toString());
+      const changed=this.#db.prepare("UPDATE accounts SET account_version=account_version+1 WHERE market_id=? AND account_id=? AND discord_user_id=? AND status='ACTIVE' AND account_version<9007199254740991")
+        .run(marketId,account.accountId,owner.discordUserId);
+      if(changed.changes!==1)throw new LedgerIntegrityError('Account version exceeds the supported range.');
+      this.#economy?.accrueAccount(marketId,account.accountId,market.tick_no,account.cashAtoms,afterCash.toString(),0);
+    }
+  }
   #recordTickEnd(market:MarketRow,now:string):void {
     const view=this.#marketView(market);
     for(const row of this.#db.prepare("SELECT discord_user_id FROM accounts WHERE market_id=? AND status='ACTIVE'").all(market.market_id) as {discord_user_id:string}[]) {
@@ -877,6 +912,7 @@ export class BrokerRepository {
       this.#db.prepare(`UPDATE markets SET tick_no = ?,market_version = ?,next_boundary_at = ? WHERE market_id = ? AND market_version = ?`)
         .run(tick, version, new Date(Date.parse(now) + TICK_INTERVAL_MILLISECONDS).toISOString(), marketId, market.market_version);
       const current = this.#market(marketId); this.#checkpoint(current, now);this.#evaluateScheduled(marketId,now);
+      this.#payContributions(marketId,now);
       this.#benchmarks.advanceBoundary(marketId);this.#recordBoundary(marketId,now);
       return this.#marketView(this.#market(marketId));
     }).immediate();
@@ -905,6 +941,7 @@ export class BrokerRepository {
         this.#cancelScheduledCorporate(marketId,now);
         this.#economy!.settleRights(this.#market(marketId),now);
         this.#evaluateScheduled(marketId,now);
+        this.#payContributions(marketId,now);
         this.#benchmarks.advanceBoundary(marketId);this.#recordBoundary(marketId,now);
         return this.#marketView(this.#market(marketId));
       }).immediate();

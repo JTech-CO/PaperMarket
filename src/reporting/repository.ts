@@ -3,6 +3,7 @@ import type Database from 'better-sqlite3';
 import type { CalendarView, ChartView, DisclosureView, ExportView, HistoryEntry, MarketView, NewsView, PerformanceView, PortfolioView, PublicViewMeta, StockView } from '../application/contracts.js';
 import { FinancialDecimal as D, MONEY_SCALE, addFractions, decimalFraction, fraction, moneyFromAtoms, moneyToString, multiplyFractions, parseFraction, parseMoney, parseRate, quantizeMoney, type Fraction } from '../domain/numeric.js';
 import { dividendRightMark } from '../domain/corporate-rights.js';
+import { capitalReturnFactor, linkCapitalFlows, type CapitalFlow } from '../domain/capital.js';
 import { INITIAL_COMPANIES } from '../fixtures/initial-companies.js';
 import { canonicalEconomyJson, economySnapshotHash, projectEconomyView, type EconomySnapshot } from '../economy/repository.js';
 import { publicEconomySchema, publicCorporateActionSchema, type PublicDisclosureRecord } from '../economy/public.js';
@@ -13,6 +14,7 @@ import { LedgerIntegrityError } from '../storage/replay.js';
 import { ReportingBenchmarks } from './benchmarks.js';
 
 export interface ReportingOwner { readonly marketId:string;readonly accountId:string;readonly discordUserId:string }
+export interface CapitalPerformance { readonly initialCapital:string; readonly contributions:string; readonly netInvestmentPnl:string; readonly totalReturnPct:string }
 interface SnapshotRow {tick_no:number;market_version:number;snapshot_json:string;snapshot_hash:string;committed_at:string}
 interface PublicFrame {row:SnapshotRow;snapshot:EconomySnapshot}
 interface Sample {market_id:string;account_id:string;tick_no:number;market_version:number;equity_atoms:string;sampled_at:string;source:'LIVE_TICK_END'|'HISTORICAL_TICK_END';previous_hash:string;sample_hash:string}
@@ -241,6 +243,37 @@ export class ReportingRepository {
     this.db.prepare('INSERT INTO performance_samples(market_id,account_id,tick_no,market_version,equity_atoms,sampled_at,source,previous_hash,sample_hash) VALUES(?,?,?,?,?,?,?,?,?)').run(...Object.values(unsigned),digest(unsigned));
   }
   recordTickEnd(owner:ReportingOwner,market:MarketView,portfolio:PortfolioView,now:string):void {this.#append(owner,market.tickNo,market.marketVersion,parseMoney(portfolio.equity),now,'LIVE_TICK_END');}
+  #capital(owner:ReportingOwner):{initialCapital:string;contributions:string;flows:CapitalFlow[]} {
+    this.#owner(owner);
+    const cash=this.db.prepare("SELECT c.event_id,c.entry_type,c.account_delta_atoms,c.tick_no,c.sequence_no,c.market_version,c.created_at,c.related_order_id FROM cash_journal c JOIN accounts a ON a.market_id=c.market_id AND a.account_id=c.account_id WHERE c.market_id=? AND c.account_id=? AND a.discord_user_id=? AND a.status='ACTIVE' AND c.entry_type IN ('INITIAL_GRANT','CONTRIBUTION') ORDER BY c.tick_no,c.sequence_no,c.journal_id")
+      .all(owner.marketId,owner.accountId,owner.discordUserId) as CashRow[];
+    const grants=cash.filter(row=>row.entry_type==='INITIAL_GRANT');
+    if(grants.length!==1||BigInt(grants[0]!.account_delta_atoms)<=0n)throw new LedgerIntegrityError('Original account capital differs.');
+    const funding=cash.filter(row=>row.entry_type==='CONTRIBUTION');
+    const valuations=this.db.prepare("SELECT v.event_id,v.tick_no,v.sequence_no,v.before_equity_atoms,v.amount_atoms FROM contribution_valuations v JOIN accounts a ON a.market_id=v.market_id AND a.account_id=v.account_id WHERE v.market_id=? AND v.account_id=? AND a.discord_user_id=? AND a.status='ACTIVE' ORDER BY v.tick_no,v.sequence_no,v.event_id")
+      .all(owner.marketId,owner.accountId,owner.discordUserId) as {event_id:string;tick_no:number;sequence_no:number;before_equity_atoms:string;amount_atoms:string}[];
+    const byEvent=new Map(funding.map(row=>[row.event_id,row]));
+    if(valuations.length!==funding.length||byEvent.size!==funding.length)throw new LedgerIntegrityError('External capital checkpoints differ.');
+    let total=0n;
+    const flows=valuations.map((row):CapitalFlow=>{
+      const journal=byEvent.get(row.event_id);
+      if(!journal||journal.tick_no!==row.tick_no||journal.sequence_no!==row.sequence_no||journal.account_delta_atoms!==row.amount_atoms
+          ||moneyFromAtoms(row.amount_atoms)<=0n||moneyFromAtoms(row.before_equity_atoms)<0n)
+        throw new LedgerIntegrityError('External capital checkpoint does not match its journal.');
+      total+=BigInt(row.amount_atoms);
+      return {eventId:row.event_id,tickNo:row.tick_no,sequenceNo:row.sequence_no,beforeEquity:points(row.before_equity_atoms),amount:points(row.amount_atoms)};
+    });
+    return {initialCapital:points(grants[0]!.account_delta_atoms),contributions:points(total),flows};
+  }
+  /** Shared owner-scoped portfolio projection; does not call portfolio or benchmark reporting. */
+  capitalPerformance(owner:ReportingOwner,equity:string,currentTick:number):CapitalPerformance {
+    const capital=this.#capital(owner);
+    if(capital.flows.some(flow=>flow.tickNo>currentTick))throw new LedgerIntegrityError('Future external capital is forbidden.');
+    const factor=capitalReturnFactor(capital.initialCapital,equity,linkCapitalFlows(capital.initialCapital,capital.flows),currentTick);
+    return {initialCapital:capital.initialCapital,contributions:capital.contributions,
+      netInvestmentPnl:points(parseMoney(equity)-parseMoney(capital.initialCapital)-parseMoney(capital.contributions)),
+      totalReturnPct:signedPct(new D(factor).minus(1).mul(100))};
+  }
   /** Completed intervals can be reconstructed from immutable cash/position/rights and paid interval accruals. */
   backfill(owner:ReportingOwner,currentTick:number):void {
     this.#owner(owner);const grant=this.db.prepare("SELECT tick_no FROM cash_journal WHERE market_id=? AND account_id=? AND entry_type='INITIAL_GRANT'").get(owner.marketId,owner.accountId) as {tick_no:number}|undefined;
@@ -271,6 +304,7 @@ export class ReportingRepository {
   }
   performance(owner:ReportingOwner,market:MarketView,portfolio:PortfolioView,elapsedMs?:number):PerformanceView {
     this.#owner(owner);const samples=this.#samples(owner);const cash=this.#cash(owner);const grant=cash.find(r=>r.entry_type==='INITIAL_GRANT')!;
+    const capital=this.#capital(owner);const linked=linkCapitalFlows(capital.initialCapital,capital.flows);
     const fills=this.db.prepare('SELECT realized_pnl_atoms,fee_numerator,fee_denominator FROM fills WHERE market_id=? AND account_id=?').all(owner.marketId,owner.accountId) as {realized_pnl_atoms:string;fee_numerator:string;fee_denominator:string}[];
     const realized=fills.reduce((sum,f)=>sum+BigInt(f.realized_pnl_atoms),0n);
     const fees=value(fills.reduce((sum,f)=>addFractions(sum,fraction(BigInt(f.fee_numerator),BigInt(f.fee_denominator))),fraction(0n)));
@@ -281,16 +315,23 @@ export class ReportingRepository {
     const other=states.filter(r=>r.kind==='ROUNDING').reduce((sum,r)=>addFractions(addFractions(sum,fraction(BigInt(r.paidAtoms),MONEY_SCALE)),parseFraction(r.mark)),fraction(0n));
     const interest=new D(portfolio.cashInterestTotal??'0').plus(portfolio.accruedCashInterest??'0');const corrections=cash.filter(r=>r.entry_type==='REVERSAL'||r.entry_type==='ROUNDING').reduce((sum,r)=>sum+BigInt(r.account_delta_atoms),0n);
     const components=realized+unrealized+parseMoney(value(dividend))+parseMoney(value(liquidation))+parseMoney(value(other))+parseMoney(interest.toString())+corrections;
-    const delta=parseMoney(portfolio.equity)-BigInt(grant.account_delta_atoms);
+    const delta=parseMoney(portfolio.equity)-parseMoney(capital.initialCapital)-parseMoney(capital.contributions);
     // Independent line floors differ from total-equity floor by at most one atom per term.
     const rounding=delta-components;
     if(rounding< -32n||rounding>32n)throw new LedgerIntegrityError('Performance contributions do not reconcile.');
-    const values=['10000',...samples.map(s=>points(s.equity_atoms)),portfolio.equity].map(v=>new D(v));let peak=new D(0);let mdd=new D(0);
+    const currentFactor=new D(capitalReturnFactor(capital.initialCapital,portfolio.equity,linked,market.tickNo));
+    const observations=[
+      ...samples.map(s=>({tick:s.tick_no,phase:1,factor:new D(capitalReturnFactor(capital.initialCapital,points(s.equity_atoms),linked,s.tick_no))})),
+      ...linked.map(flow=>({tick:flow.tickNo,phase:0,factor:new D(flow.factor)})),
+      {tick:market.tickNo,phase:2,factor:currentFactor},
+    ].sort((a,b)=>a.tick-b.tick||a.phase-b.phase);
+    const values=[new D(1),...observations.map(observation=>observation.factor)];let peak=new D(0);let mdd=new D(0);
     for(const v of values){peak=D.max(peak,v);if(peak.gt(0))mdd=D.max(mdd,peak.minus(v).div(peak).mul(100));}
     const previous=samples.at(-1);const expected=market.tickNo-grant.tick_no;
-    return {...meta(market),equity:portfolio.equity,totalReturnPct:portfolio.totalReturnPct,previousTickChangePct:previous&&new D(points(previous.equity_atoms)).gt(0)?signedPct(new D(portfolio.equity).div(points(previous.equity_atoms)).minus(1).mul(100)):null,maxDrawdownPct:signedPct(mdd),
+    const previousFactor=previous?new D(capitalReturnFactor(capital.initialCapital,points(previous.equity_atoms),linked,previous.tick_no)):null;
+    return {...meta(market),equity:portfolio.equity,initialCapital:capital.initialCapital,contributions:capital.contributions,netInvestmentPnl:points(delta),nextContributionTick:portfolio.nextContributionTick??null,totalReturnPct:signedPct(currentFactor.minus(1).mul(100)),previousTickChangePct:previousFactor?.gt(0)?signedPct(currentFactor.div(previousFactor).minus(1).mul(100)):null,maxDrawdownPct:signedPct(mdd),
       realizedPnl:points(realized),unrealizedPnl:points(unrealized),fees,cashInterest:interest.toString(),dividends:value(dividend),liquidation:value(liquidation),otherRightsPnl:value(other),rounding:points(rounding+corrections),reconciled:true,cashWeightPct:new D(portfolio.equity).gt(0)?signedPct(new D(portfolio.account.cash).div(portfolio.equity).mul(100)):'0',
-      startedTick:grant.tick_no,currentTick:market.tickNo,missingHistory:samples.length!==expected,sampleCount:values.length,drawdownDefinition:'개설 원금·완료된 틱 말 순자산·현재 순자산. 틱 내부 최저가는 포함하지 않습니다.',baselines:this.benchmarks.owned(owner.marketId,owner.accountId,elapsedMs),pm8:this.benchmarks.pm8(owner.marketId,elapsedMs)};
+      startedTick:grant.tick_no,currentTick:market.tickNo,missingHistory:samples.length!==expected,sampleCount:values.length,drawdownDefinition:'외부 납입 직전 평가액으로 연결한 시간가중 수익률의 개설 시점·납입 경계·완료된 틱 말·현재 지수. 틱 내부 최저가는 포함하지 않습니다.',baselines:this.benchmarks.owned(owner.marketId,owner.accountId,elapsedMs),pm8:this.benchmarks.pm8(owner.marketId,elapsedMs)};
   }
   #cash(owner:ReportingOwner):CashRow[] {this.#owner(owner);return this.db.prepare("SELECT c.event_id,c.entry_type,c.account_delta_atoms,c.tick_no,c.sequence_no,c.market_version,c.created_at,c.related_order_id FROM cash_journal c JOIN accounts a ON a.market_id=c.market_id AND a.account_id=c.account_id WHERE c.market_id=? AND c.account_id=? AND a.discord_user_id=? AND a.status='ACTIVE' ORDER BY c.sequence_no,c.journal_id").all(owner.marketId,owner.accountId,owner.discordUserId) as CashRow[];}
   history(owner:ReportingOwner,limit:number,beforeSequence=Number.MAX_SAFE_INTEGER,beforeEventId?:string):{entries:HistoryEntry[];nextBeforeSequence:number|null;nextBeforeEventId:string|null} {
@@ -301,7 +342,7 @@ export class ReportingRepository {
     const shown=all.slice(0,limit);
     const entries=shown.map((r):HistoryEntry=>{const fill=r.related_order_id?this.db.prepare('SELECT symbol,side,quantity FROM fills WHERE market_id=? AND account_id=? AND order_id=?').get(owner.marketId,owner.accountId,r.related_order_id) as {symbol:string;side:string;quantity:string}|undefined:undefined;
       const kind:HistoryEntry['kind']=r.entry_type==='TRADE'?'FILL':r.entry_type==='REVERSAL'||r.entry_type==='ROUNDING'?'CORRECTION':r.entry_type as HistoryEntry['kind'];
-      const title=fill?`${fill.symbol} ${fill.side==='BUY'?'매수':'매도'} ${fill.quantity}주`:({DIVIDEND:'배당 지급',INTEREST:'현금 이자',LIQUIDATION:'청산 회수',CORRECTION:'원장 조정',INITIAL_GRANT:'최초자금'} as Record<string,string>)[kind]??'원장 기록';
+      const title=fill?`${fill.symbol} ${fill.side==='BUY'?'매수':'매도'} ${fill.quantity}주`:({DIVIDEND:'배당 지급',INTEREST:'현금 이자',LIQUIDATION:'청산 회수',CORRECTION:'원장 조정',INITIAL_GRANT:'최초자금',CONTRIBUTION:'정기 투자금 납입'} as Record<string,string>)[kind]??'원장 기록';
       return {eventId:r.event_id,kind,tickNo:r.tick_no,sequenceNo:r.sequence_no,marketVersion:r.market_version,createdAt:r.created_at,symbol:fill?.symbol??null,title,amount:points(r.account_delta_atoms)};});
     const last=all.length>shown.length?shown.at(-1):undefined;
     return {entries,nextBeforeSequence:last?.sequence_no??null,nextBeforeEventId:last?.event_id??null};
@@ -316,9 +357,12 @@ export class ReportingRepository {
     const acceptance=this.db.prepare('SELECT terms_version,privacy_version,age14_plus,agree_terms,accepted_at FROM policy_acceptances WHERE market_id=? AND account_id=?').get(owner.marketId,owner.accountId)??null;
     const notifications=this.db.prepare('SELECT notification_id,kind,symbol,title,summary,tick_no,market_version,created_at,read_at FROM notification_inbox WHERE market_id=? AND account_id=? ORDER BY inbox_no DESC LIMIT 1000').all(owner.marketId,owner.accountId) as Array<Record<string,unknown>>;
     const exportAccess=this.db.prepare('SELECT format,market_version,record_count,accessed_at FROM export_access WHERE market_id=? AND account_id=? ORDER BY accessed_at DESC,access_id DESC LIMIT 1000').all(owner.marketId,owner.accountId);
-    const payload={schema:'PaperMarket owner export v1',generatedAt:market.updatedAt,marketVersion:market.marketVersion,account:portfolio.account,portfolio,performance,history:page.entries,fills,alerts:{preferences,priceAlerts,watchlist},notifications,policyAcceptance:acceptance,exportAccess,nextBeforeSequence:page.nextBeforeSequence,nextBeforeEventId:page.nextBeforeEventId};
+    const plan=this.db.prepare("SELECT p.enabled,p.start_tick,p.interval_ticks,p.amount_atoms FROM account_contribution_plans p JOIN accounts a ON a.market_id=p.market_id AND a.account_id=p.account_id WHERE p.market_id=? AND p.account_id=? AND a.discord_user_id=? AND a.status='ACTIVE'")
+      .get(owner.marketId,owner.accountId,owner.discordUserId) as {enabled:number;start_tick:number;interval_ticks:number;amount_atoms:string}|undefined;
+    const funding=plan?{enabled:plan.enabled===1,startTick:plan.start_tick,intervalTicks:plan.interval_ticks,amount:points(plan.amount_atoms),nextContributionTick:performance.nextContributionTick}:null;
+    const payload={schema:'PaperMarket owner export v1',generatedAt:market.updatedAt,marketVersion:market.marketVersion,account:portfolio.account,portfolio,performance,funding,history:page.entries,fills,alerts:{preferences,priceAlerts,watchlist},notifications,policyAcceptance:acceptance,exportAccess,nextBeforeSequence:page.nextBeforeSequence,nextBeforeEventId:page.nextBeforeEventId};
     const files=format==='JSON'?[{name:'papermarket.json',mimeType:'application/json',content:JSON.stringify(payload,null,2)}]:[
-      {name:'account.csv',mimeType:'text/csv',content:csvDocument(['account_id','created_at','tick','market_version','cash','equity','total_return_pct'],[[owner.accountId,portfolio.account.createdAt,market.tickNo,market.marketVersion,portfolio.account.cash,portfolio.equity,portfolio.totalReturnPct]])},
+      {name:'account.csv',mimeType:'text/csv',content:csvDocument(['account_id','created_at','tick','market_version','cash','equity','initial_capital','contributions','net_investment_pnl','total_return_pct','next_contribution_tick','funding_enabled','funding_start_tick','funding_interval_ticks','funding_amount'],[[owner.accountId,portfolio.account.createdAt,market.tickNo,market.marketVersion,portfolio.account.cash,portfolio.equity,performance.initialCapital,performance.contributions,performance.netInvestmentPnl,performance.totalReturnPct,performance.nextContributionTick,funding?.enabled,funding?.startTick,funding?.intervalTicks,funding?.amount]])},
       {name:'history.csv',mimeType:'text/csv',content:csvDocument(['event_id','kind','tick','sequence','market_version','created_at','symbol','description','cash_delta'],page.entries.map(e=>[e.eventId,e.kind,e.tickNo,e.sequenceNo,e.marketVersion,e.createdAt,e.symbol,e.title,e.amount]))},
       {name:'positions.csv',mimeType:'text/csv',content:csvDocument(['listing_id','symbol','quantity','price','value','cost','unrealized_pnl'],portfolio.positions.map(p=>[p.listingId,p.symbol,p.quantity,p.price,p.value,p.cost,p.unrealizedPnl]))},
       {name:'rights.csv',mimeType:'text/csv',content:csvDocument(['right_id','kind','symbol','status','nominal','mark','paid','cost'],(portfolio.rights??[]).map(r=>[r.rightId,r.kind,r.symbol,r.status,r.nominal,r.currentValue,r.paid,r.cost]))},

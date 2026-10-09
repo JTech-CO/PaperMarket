@@ -1,6 +1,6 @@
 import { ChannelType, InteractionContextType, PermissionFlagsBits, SlashCommandBuilder, type SlashCommandOptionsOnlyBuilder } from 'discord.js';
 
-export const COMMAND_NAMES = ['setup', 'open', 'market', 'company', 'economy', 'financial', 'news', 'calendar', 'chart', 'performance', 'export', 'alerts', 'buy', 'sell', 'orders', 'portfolio', 'history', 'status', 'help', 'privacy', 'close'] as const;
+export const COMMAND_NAMES = ['setup', 'open', 'market', 'company', 'economy', 'financial', 'news', 'calendar', 'chart', 'performance', 'export', 'alerts', 'buy', 'sell', 'orders', 'portfolio', 'funding', 'history', 'status', 'help', 'privacy', 'close'] as const;
 export type CommandName = (typeof COMMAND_NAMES)[number];
 
 function addOrderOptions(command: SlashCommandOptionsOnlyBuilder, side: 'BUY' | 'SELL'): SlashCommandOptionsOnlyBuilder {
@@ -63,11 +63,13 @@ export function buildCommands() {
     guildCommand('economy', '공개 경제지표·가상 금리·정책 전망·최근 공시를 조회합니다.'),
     guildCommand('financial', '종목의 이미 공개된 실적과 시장 전망을 조회합니다.')
       .addStringOption((option) => option.setName('symbol').setDescription('종목 심볼 (예: HGI)').setMaxLength(12).setRequired(true)),
-    addOrderOptions(guildCommand('buy', '시장가 또는 지정가 매수 조건과 예약 자산을 확인합니다.')
+    addOrderOptions(guildCommand('buy', '금액이나 가용 현금 비율로 시장가 매수하거나 직접 수량으로 지정가를 설정합니다.')
       .addStringOption((option) => option.setName('symbol').setDescription('종목 심볼 (예: HGI)').setMaxLength(12).setRequired(true))
-      .addStringOption((option) => option.setName('quantity').setDescription('매수 수량: 소수점 6자리까지, 예산과 하나만 입력')
-        .setMaxLength(96))
       .addStringOption((option) => option.setName('budget').setDescription('수수료를 포함한 최대 예산: 수량과 하나만 입력')
+        .setMaxLength(64))
+      .addIntegerOption((option) => option.setName('budget_percent').setDescription('예약분을 제외한 가용 현금 비율: 예산·수량과 하나만 입력')
+        .addChoices({ name: '가용 현금 25%', value: 25 }, { name: '가용 현금 50%', value: 50 }, { name: '가용 현금 100%', value: 100 }))
+      .addStringOption((option) => option.setName('quantity').setDescription('직접 매수 수량: 소수점 6자리까지. 지정가는 수량 필수')
         .setMaxLength(64)), 'BUY'),
     addOrderOptions(guildCommand('sell', '시장가·지정가·스톱 매도 조건과 예약 수량을 확인합니다.')
       .addStringOption((option) => option.setName('symbol').setDescription('종목 심볼 (예: HGI)').setMaxLength(12).setRequired(true))
@@ -76,6 +78,8 @@ export function buildCommands() {
       .addBooleanOption((option) => option.setName('all').setDescription('시장가로 이 종목의 매도 가능분 전량을 매도합니다.')), 'SELL'),
     guildCommand('orders', '본인의 미체결 예약 주문·예약 자산을 조회하고 취소합니다.'),
     guildCommand('portfolio', '본인의 현금·보유량·평가금액을 비공개로 조회합니다.'),
+    guildCommand('funding', '정기 모의 입금의 일정·누적액을 조회하거나 자동 입금을 켜고 끕니다.')
+      .addBooleanOption((option) => option.setName('enabled').setDescription('true: 정기 모의 입금 활성화, false: 이후 입금 중단. 생략하면 조회')),
     guildCommand('history', '본인의 체결·배당·이자·청산·정정 기록을 비공개로 조회합니다.'),
     guildCommand('status', '확정 시장 버전과 운영 상태를 조회합니다.'),
     guildCommand('help', '모의투자 규칙·경제 모형의 범위·약관·개인정보 안내를 확인합니다.'),

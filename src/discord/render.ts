@@ -1,5 +1,5 @@
 import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, type EmbedBuilder } from 'discord.js';
-import type { AlertsView, CalendarView, EconomyView, ExportView, FinancialView, MarketView, NewsView, PerformanceView, PublicViewMeta, ScheduledOrderView, ServiceResponse, StockView } from '../application/contracts.js';
+import type { AlertsView, CalendarView, EconomyView, ExportView, FinancialView, FundingView, MarketView, NewsView, PerformanceView, PublicViewMeta, ScheduledOrderView, ServiceResponse, StockView } from '../application/contracts.js';
 import { FinancialDecimal } from '../domain/numeric.js';
 import { baseEmbed, displayExact, displayNumber, errorEmbed, safeText, UI_COLORS } from './messages.js';
 import { renderChart, type PriceChartInput } from '../charts/render.js';
@@ -99,11 +99,37 @@ export function renderStock(stock: StockView): ReplyView {
   const latest = stock.latestDisclosures[0];
   if (latest) embed.addFields({ name: `최근 공시 · ${latest.publishedTick}틱`, value: `${safeText(latest.title, 100)}\n${safeText(latest.summary, 400)}` });
   return replyView(embed, [navigationRow([
-    { id: `pm:trade:BUY:${stock.listing.symbol}:${stock.generation}`, label: '매수', disabled: !tradable },
+    { id: `pm:buy:${stock.listing.symbol}:${stock.generation}`, label: '금액 매수', disabled: !tradable },
     { id: `pm:trade:SELL:${stock.listing.symbol}:${stock.generation}`, label: '매도', disabled: !tradable },
     { id: `pm:view:financial:${stock.listing.symbol}:${stock.generation}`, label: '재무' },
     { id: `pm:chart:${stock.listing.symbol}:${stock.generation}:PRICE:LINEAR`, label: '차트' },
   ])]);
+}
+
+/** Presets contain no balance or owner data. The broker resolves every quote against the clicking account. */
+export function renderBuyChoices(symbol: string, generation: number): ReplyView {
+  if (!/^[A-Z][A-Z0-9]{0,11}$/.test(symbol) || !Number.isInteger(generation) || generation < 1 || generation > 1_000_000) return replyView(errorEmbed('INVALID_INPUT'));
+  return replyView(baseEmbed(`PaperMarket · ${symbol} 금액 매수`, [
+    `${generation}세대 · 수수료를 포함한 최대 매수 금액을 선택하세요.`,
+    '주가가 보유 현금보다 높아도 소수점 6자리까지 나누어 매수할 수 있습니다. 최소 수량을 살 수 있는 금액은 필요합니다.',
+    '가용 현금은 예약분을 제외한 현재 잔액입니다. 금액·수량 직접입력에서 25%·50%·100% 또는 원하는 금액을 입력할 수 있습니다.',
+    '선택 후 수량·수수료·총액이 담긴 견적을 확인합니다. 확인 버튼을 눌러야 체결됩니다.',
+  ].join('\n\n')), [navigationRow([
+    { id: `pm:buyquote:1000:${symbol}:${generation}`, label: '1,000 포인트' },
+    { id: `pm:buyquote:5000:${symbol}:${generation}`, label: '5,000 포인트' },
+    { id: `pm:buyquote:P50:${symbol}:${generation}`, label: '가용 현금 50%' },
+    { id: `pm:trade:BUY:${symbol}:${generation}`, label: '금액·수량 직접입력' },
+  ])]);
+}
+
+export function renderFunding(funding: FundingView): ReplyView {
+  return replyView(baseEmbed('PaperMarket · 정기 모의 입금', [
+    `자동 입금 ${funding.enabled ? '활성' : '중단'} · ${funding.intervalTicks}틱마다 ${displayNumber(funding.amount)} 포인트`,
+    `일정 시작 ${funding.startTick}틱 · 다음 입금 ${funding.nextContributionTick === null ? '없음' : `${funding.nextContributionTick}틱`} · 누적 추가 입금 ${displayNumber(funding.contributions)}`,
+    '계좌의 경과 틱에 따라 자동 입금됩니다. 접속·채팅·거래 횟수와 관련이 없으며 실제 현금이나 보상이 아닙니다.',
+    '추가 입금은 투자 손익에 포함되지 않습니다. 동일 시점의 현금·보유 기준전략에도 같은 입금을 반영합니다.',
+    '/funding enabled:false로 중단하고 enabled:true로 다시 시작합니다. 재활성화 시 현재 틱부터 새 일정이 시작되며 중단 기간의 입금은 소급 지급하지 않습니다.',
+  ].join('\n\n')), [navigationRow([{ id: 'pm:view:portfolio', label: '내 자산' }, { id: 'pm:view:performance', label: '성과' }])]);
 }
 
 export function renderNews(news: NewsView, symbol?: string): ReplyView {
@@ -129,13 +155,15 @@ export function renderCalendar(calendar: CalendarView): ReplyView {
 
 export function renderPerformance(p: PerformanceView): ReplyView {
   const embed = baseEmbed('PaperMarket · 투자 성과', [
-    `순자산 ${displayNumber(p.equity)} · 총수익률 ${percent(p.totalReturnPct)}`,
+    `순자산 ${displayNumber(p.equity)} · 투자 수익률 ${percent(p.totalReturnPct)}`,
+    ...(p.initialCapital === undefined ? [] : [`초기자금 ${displayNumber(p.initialCapital)} · 추가 입금 ${displayNumber(p.contributions ?? '0')} · 투자 손익 ${signedAmount(p.netInvestmentPnl ?? '0')}`]),
     `직전 확정 틱 변화 ${p.previousTickChangePct === null ? '기록 없음' : percent(p.previousTickChangePct)} · 최대낙폭 ${displayNumber(p.maxDrawdownPct)}%`,
     `${p.startedTick}~${p.currentTick}틱 · 확정 표본 ${p.sampleCount}개 · 현금 비중 ${displayNumber(p.cashWeightPct)}%`, metaText(p),
-    p.missingHistory ? '도입 이전 전체 경로를 복원할 수 없어 낙폭은 저장된 확정 표본 범위에서 계산합니다.' : '수익률은 초기금 10,000 기준이며 외부 입출금은 없습니다.',
+    '투자 손익은 순자산에서 초기자금과 추가 입금을 뺀 금액입니다. 수익률·낙폭은 입금 영향을 제거한 시간가중 성과입니다.',
+    ...(p.missingHistory ? ['도입 이전 전체 경로를 복원할 수 없어 낙폭은 저장된 확정 표본 범위에서 계산합니다.'] : []),
   ].join('\n\n'));
   embed.addFields({ name: '수익 기여 · 포인트', value: `실현손익 ${signedAmount(p.realizedPnl)} · 평가손익 ${signedAmount(p.unrealizedPnl)}\n현금이자(지급+발생) ${signedAmount(p.cashInterest)}\n배당 기여(지급+권리 평가) ${signedAmount(p.dividends)}\n청산 기여 ${signedAmount(p.liquidation)} · 기타 권리 기여 ${signedAmount(p.otherRightsPnl)}\n수수료 ${displayNumber(p.fees)} · 반올림 조정 ${signedAmount(p.rounding)}\n수수료는 취득원가·실현손익에 포함됩니다.\n합계 대조 ${p.reconciled ? '일치' : '확인 필요'}` },
-    { name: '동일 계좌 시작점의 기준전략', value: `전액 현금 ${percent(p.baselines.cash.totalReturnPct)} · ${p.baselines.cash.startTick}틱 시작\n8종목 최초 매수 후 보유 ${percent(p.baselines.hold8.totalReturnPct)} · ${p.baselines.hold8.startTick}틱 시작\n매매 수수료·배당·권리·현금 이자를 반영합니다.${p.baselines.hold8.openingPolicy === 'LEGACY_BOUNDARY_ONLY' ? '\n기존 계좌의 최초 틱 부분 보유시간을 복원할 수 없어 해당 부분의 이자를 제외합니다. 이후 확정 가격·금리·기업행동을 적용했습니다.' : ''}` },
+    { name: '동일 계좌 시작점의 기준전략', value: `전액 현금 ${percent(p.baselines.cash.totalReturnPct)} · ${p.baselines.cash.startTick}틱 시작\n8종목 최초 매수 후 보유 ${percent(p.baselines.hold8.totalReturnPct)} · ${p.baselines.hold8.startTick}틱 시작\n본인 계좌와 같은 시점·금액의 추가 입금을 반영하고 입금 효과를 수익률에서 제외합니다. 8종목 보유 전략은 추가 입금을 현금으로 유지합니다.\n매매 수수료·배당·권리·현금 이자를 반영합니다.${p.baselines.hold8.openingPolicy === 'LEGACY_BOUNDARY_ONLY' ? '\n기존 계좌의 최초 틱 부분 보유시간을 복원할 수 없어 해당 부분의 이자를 제외합니다. 이후 확정 가격·금리·기업행동을 적용했습니다.' : ''}` },
     { name: '시장 PM8 · 별도 기준 시점', value: `시장 총수익 ${percent(p.pm8.totalReturnPct)} · 지수 ${displayNumber(p.pm8.index)}\n시장 ${p.pm8.startTick}틱부터 · 21틱마다 동일 비중 재조정` },
     { name: '낙폭 정의', value: safeText(p.drawdownDefinition, 500) });
   return replyView(embed, [navigationRow([{ id: 'pm:view:portfolio', label: '내 자산' }, { id: 'pm:view:history', label: '내역' }, { id: 'pm:export:CSV:LATEST', label: 'CSV 내보내기' }])]);
@@ -306,6 +334,7 @@ export function renderServiceResponse(response: ServiceResponse): ReplyView {
     case 'CALENDAR': return renderCalendar(response.calendar);
     case 'CHART': return renderPriceChart(response.chart);
     case 'PERFORMANCE': return renderPerformance(response.performance);
+    case 'FUNDING': return renderFunding(response.funding);
     case 'EXPORT': return renderExport(response.export);
     case 'ALERTS': return renderAlerts(response.alerts);
     case 'NOTIFICATION_BATCH': case 'NOTIFICATION_AUTHORIZED': case 'NOTIFICATION_ACK': return replyView(errorEmbed('INVALID_INPUT'));
@@ -320,6 +349,7 @@ export function renderServiceResponse(response: ServiceResponse): ReplyView {
       '계좌를 개설했거나 기존 계좌를 복원했습니다. 초기자금 10,000은 시장별 한 번만 지급됩니다.',
       `보유 현금 ${displayNumber(response.account.cash)} · 계좌 버전 ${response.account.accountVersion}`,
       '실제 현금·현금화·보상은 없습니다. /market으로 가상 시장을 조회하고 /buy로 견적을 확인하세요.',
+      '정기 모의 입금의 일정과 누적액은 /funding에서 확인하고 자동 입금을 설정할 수 있습니다.',
     ].join('\n\n')));
     case 'QUOTE': {
       const quote = response.quote;
@@ -395,7 +425,9 @@ export function renderServiceResponse(response: ServiceResponse): ReplyView {
         `**${safeText(position.symbol, 12)}** ${displayNumber(position.quantity, 6)}주 · 평가 ${displayNumber(position.value)} · 평가손익 ${displayNumber(position.unrealizedPnl)}`
         + (position.availableQuantity === undefined ? '' : `\n가용 ${displayExact(position.availableQuantity, 0)}주 · 예약 ${displayExact(position.reservedQuantity ?? '0', 0)}주`));
       const embed=baseEmbed('PaperMarket · 내 자산', [
-        `순자산 ${displayNumber(portfolio.equity)} · 총수익률 ${percent(portfolio.totalReturnPct)}`,
+        `순자산 ${displayNumber(portfolio.equity)} · 투자 수익률 ${percent(portfolio.totalReturnPct)}`,
+        ...(portfolio.initialCapital === undefined ? [] : [`초기자금 ${displayNumber(portfolio.initialCapital)} · 추가 입금 ${displayNumber(portfolio.contributions ?? '0')}\n투자 손익 ${signedAmount(portfolio.netInvestmentPnl ?? '0')} · 수익률에서 입금 효과 제외`]),
+        ...(portfolio.nextContributionTick === undefined ? [] : [`정기 입금 ${portfolio.nextContributionTick === null ? '중단' : `다음 ${portfolio.nextContributionTick}틱`} · /funding에서 설정`]),
         `현금 ${displayNumber(portfolio.account.cash)} · 계좌 버전 ${portfolio.account.accountVersion}`,
         ...(portfolio.availableCash === undefined ? [] : [`가용 현금 ${displayExact(portfolio.availableCash)} · 예약 현금 ${displayExact(portfolio.reservedCash ?? '0')}\n예약 현금은 총 현금에 포함되며 예치이자 대상입니다.`]),
         ...(portfolio.accruedCashInterest === undefined ? [] : [`미지급 현금 이자 ${displayNumber(portfolio.accruedCashInterest)} · 누적 지급 ${displayNumber(portfolio.cashInterestTotal ?? '0')}\n보유시간 기준 발생 · 틱말 지급 · 틱 내부 재복리 없음`]),
@@ -414,11 +446,11 @@ export function renderServiceResponse(response: ServiceResponse): ReplyView {
       ].join('\n')});
       if(rights.length>rightLimit) embed.addFields({name:'권리 표시',value:`최근 ${rightLimit}건 표시 · 전체 ${rights.length}건의 현재 평가는 순자산에 포함됩니다.`});
       return replyView(embed, [navigationRow([{ id: 'pm:view:performance', label: '성과' }, { id: 'pm:view:history', label: '내역' },
-        { id: 'pm:view:orders', label: '예약 주문' }])]);
+        { id: 'pm:view:orders', label: '예약 주문' }, { id: 'pm:view:funding', label: '정기 입금' }])]);
     }
     case 'HISTORY': {
       if (response.entries) {
-        const embed = baseEmbed('PaperMarket · 본인 원장 내역', '체결·배당·이자·청산·정정은 확정 순서대로 조회합니다. 금액 단위는 포인트입니다.');
+        const embed = baseEmbed('PaperMarket · 본인 원장 내역', '입금·체결·배당·이자·청산·정정은 확정 순서대로 조회합니다. 금액 단위는 포인트이며 추가 입금은 투자 손익에서 제외합니다.');
         for (const entry of response.entries.slice(0, 4)) embed.addFields({ name: `${entry.tickNo}틱 · ${safeText(entry.title, 70)}`, value: `${entry.symbol ? `${safeText(entry.symbol, 12)} · ` : ''}${signedAmount(entry.amount)}\n${displayTime(entry.createdAt)} · 버전 ${entry.marketVersion} · 순번 ${entry.sequenceNo}` });
         if (!response.entries.length) embed.addFields({ name: '내역', value: '조회 범위에 확정 원장 내역이 없습니다.' });
         const actions = [{ id: 'pm:view:portfolio', label: '내 자산' }, { id: 'pm:export:CSV:LATEST', label: 'CSV 내보내기' }];

@@ -41,9 +41,12 @@ test('full production engine and exact CASH/HOLD8 transitions match an actual SQ
   const db=openDatabase(':memory:');t.after(()=>db.close());const clock=new FakeClock('2026-10-09T00:00:00.000Z');const guildId='111111111111111111';
   new FoundationRepository(db,clock).createMarket({marketId:definition.marketId,guildId,listings:createInitialListings()});
   const broker=new BrokerRepository(db,clock,{identityKey:Buffer.alloc(32,5),economySeed:modelMasterSeed(definition)});let id=333333333333333333n;
-  const context=()=>({guildId,discordUserId:'222222222222222222',interactionId:(++id).toString(),receivedAt:clock.now(),guildPermissions:'32'});
+  const context=(discordUserId='222222222222222222')=>({guildId,discordUserId,interactionId:(++id).toString(),receivedAt:clock.now(),guildPermissions:'32'});
   assert.equal(broker.dispatch({type:'setup',context:context(),channelId:'444444444444444444'}).kind,'SETUP');
   const opened=broker.dispatch({type:'open',context:context(),age14Plus:true,agreeTerms:true});assert.equal(opened.kind,'ACCOUNT');if(opened.kind!=='ACCOUNT')throw new Error('Account unavailable');
+  // The preregistered model uses fixed initial capital. A second funded owner verifies that personal inflows do not change its market path.
+  assert.equal(broker.dispatch({type:'funding',context:context(),enabled:false}).kind,'FUNDING');
+  const fundedUser='222222222222222223';assert.equal(broker.dispatch({type:'open',context:context(fundedUser),age14Plus:true,agreeTerms:true}).kind,'ACCOUNT');
   const compare=()=>{
     const raw=db.prepare('SELECT snapshot_json FROM economy_snapshots WHERE market_id=? AND tick_no=?').get(definition.marketId,run.economy.tickNo) as {snapshot_json:string};
     const snapshot=JSON.parse(raw.snapshot_json) as {economy:unknown;public:unknown;pricing:unknown};
@@ -54,7 +57,8 @@ test('full production engine and exact CASH/HOLD8 transitions match an actual SQ
       assert.equal(stored.state_json,canonicalEconomyJson(run.accounts.find(a=>a.id===kind)!.state));
     }
   };
-  compare();for(let tick=1;tick<=3;tick++) {clock.advanceBy(300000);const result=broker.dispatch({type:'tick',now:clock.now()});assert.equal(result.kind,'TICKED',JSON.stringify(result));run=advanceModelTick(run);assert.equal(run.status,'IN_PROGRESS');compare();}
+  compare();for(let tick=1;tick<=22;tick++) {clock.advanceBy(300000);const result=broker.dispatch({type:'tick',now:clock.now()});assert.equal(result.kind,'TICKED',JSON.stringify(result));run=advanceModelTick(run);assert.equal(run.status,'IN_PROGRESS');compare();}
+  const funded=broker.dispatch({type:'portfolio',context:context(fundedUser)});assert.equal(funded.kind,'PORTFOLIO');if(funded.kind==='PORTFOLIO')assert.equal(funded.portfolio.contributions,'1000');
 });
 test('EX capture charges both real fees and sells only stock while preserving its exact entitlement',()=>{
   const run=createSeedRun(modelPlan('pilot'),PILOT_SEEDS[0]!);const original=INITIAL_COMPANIES[0]!;

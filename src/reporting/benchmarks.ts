@@ -32,6 +32,9 @@ const stateSchema = z.strictObject({
   realizedProfitAtoms: z.string().max(51).refine(value => { try { moneyFromAtoms(value); return true; } catch { return false; } }),
   interestCarry: exact, dividendCarry: exact, liquidationCarry: exact,
   positions: z.array(position).max(8), rights: z.array(right).max(1024),
+  // Optional fields preserve the exact canonical JSON and hashes of legacy snapshots.
+  contributionsAtoms: atom.optional(),
+  timeWeightedFactor: z.string().max(96).refine(value => { try { return new D(parseRate(value)).gte(0); } catch { return false; } }).optional(),
 }).superRefine((state, context) => {
   if (new Set(state.positions.map(item => item.listingId)).size !== state.positions.length || new Set(state.rights.map(item => item.id)).size !== state.rights.length)
     context.addIssue({ code: 'custom', message: 'Duplicate benchmark ownership' });
@@ -193,7 +196,7 @@ function advanceState(prior: State, previous: Frame, current: Frame, elapsed: nu
   return stateSchema.parse(state);
 }
 
-/** Server-owned shadow accounts. Public inputs only; no orders, balances or random draws enter the model. */
+/** Server-owned shadows use public market facts and matched external funding, never investor trades or random draws. */
 export class ReportingBenchmarks {
   readonly #verifiedFrames = new Map<string, { json: string; hash: string; frame: Frame }>();
   readonly #verifiedSeries=new Map<string,{key:string;loaded:{snapshot:Snapshot;state:State;frame:Frame}}>();
@@ -220,6 +223,8 @@ export class ReportingBenchmarks {
       action:this.db.prepare('SELECT action_json FROM corporate_actions WHERE market_id=? ORDER BY rowid DESC LIMIT 1').get(series.market_id)??null,
       trial:this.db.prepare('SELECT tick_no,market_version FROM trial_ticks WHERE market_id=? ORDER BY rowid DESC LIMIT 1').get(series.market_id)??null,
       benchmark:this.db.prepare('SELECT state_hash FROM benchmark_snapshots WHERE market_id=? AND series_id=? ORDER BY rowid DESC LIMIT 1').get(series.market_id,series.series_id)??null,
+      funding:series.account_id===null?null:this.db.prepare("SELECT count(*) count,max(rowid) head FROM cash_journal WHERE market_id=? AND account_id=? AND entry_type='CONTRIBUTION'").get(series.market_id,series.account_id),
+      fundingHead:series.account_id===null?null:this.db.prepare("SELECT event_id,account_delta_atoms,tick_no,sequence_no FROM cash_journal WHERE market_id=? AND account_id=? AND entry_type='CONTRIBUTION' ORDER BY rowid DESC LIMIT 1").get(series.market_id,series.account_id)??null,
     };
     // Rolled-back inserts may reuse their row IDs on a later transaction.
     return canonicalEconomyJson({series,market,sources,listings,heads});
@@ -294,6 +299,14 @@ export class ReportingBenchmarks {
   #series(marketId: string, seriesId: string): Series | undefined {
     return this.db.prepare('SELECT * FROM benchmark_series WHERE market_id=? AND series_id=?').get(marketId, seriesId) as Series | undefined;
   }
+  #funding(series:Series,throughTick:number):Map<number,bigint> {
+    if(series.account_id===null)return new Map();
+    const rows=this.db.prepare("SELECT tick_no,account_delta_atoms FROM cash_journal WHERE market_id=? AND account_id=? AND entry_type='CONTRIBUTION' AND tick_no<=? ORDER BY tick_no,sequence_no,journal_id")
+      .all(series.market_id,series.account_id,throughTick) as {tick_no:number;account_delta_atoms:string}[];
+    const totals=new Map<number,bigint>();
+    for(const row of rows){const amount=moneyFromAtoms(row.account_delta_atoms);if(amount<=0n||row.tick_no<=series.start_tick)throw new LedgerIntegrityError('Benchmark external capital differs.');totals.set(row.tick_no,(totals.get(row.tick_no)??0n)+amount);}
+    return totals;
+  }
   #append(series: Series, frame: Frame, state: State, previousHash: string): void {
     const unsigned: Omit<Snapshot, 'state_hash'> = { market_id: series.market_id, series_id: series.series_id, tick_no: frame.tick,
       market_version: frame.version, source_hash: frame.hash, previous_hash: previousHash, state_json: canonicalEconomyJson(stateSchema.parse(state)),
@@ -313,10 +326,14 @@ export class ReportingBenchmarks {
     const sources = new Map(sourceRows.map(row => [row.tick_no, row]));
     const actionRows = this.db.prepare('SELECT tick_no,action_json FROM corporate_actions WHERE market_id=? AND tick_no>=? AND tick_no<=? ORDER BY tick_no,rowid')
       .all(series.market_id, series.start_tick, rows.at(-1)!.tick_no) as { tick_no: number; action_json: string }[];
+    const funding=this.#funding(series,rows.at(-1)!.tick_no);let contributed=0n;
     for (const row of rows) {
       const { state_hash, ...unsigned } = row;
       if (row.tick_no !== expected++ || row.previous_hash !== previous || snapshotHash(unsigned) !== state_hash) throw new LedgerIntegrityError('Benchmark immutable chain differs.');
       state = stateSchema.parse(JSON.parse(row.state_json));
+      contributed+=funding.get(row.tick_no)??0n;
+      if(BigInt(state.contributionsAtoms??'0')!==contributed||(contributed>0n&&state.timeWeightedFactor===undefined))
+        throw new LedgerIntegrityError('Benchmark funding ledger differs.');
       const source = sources.get(row.tick_no);
       let hash = source ? sourceHash(source, source.daily_cash_rate, actionRows.filter(action => action.tick_no === row.tick_no)) : this.#frame(series.market_id, row.tick_no).hash;
       // A committed trial observation at the adoption boundary remains an immutable trial observation.
@@ -345,11 +362,23 @@ export class ReportingBenchmarks {
   }
   #advance(series: Series, finalTick: number): void {
     let loaded = this.#load(series);
+    const funding=this.#funding(series,finalTick);
     for (let tick = loaded.snapshot.tick_no + 1; tick <= finalTick; tick++) {
       const frame = this.#frame(series.market_id, tick);
       const elapsed = tick === series.start_tick + 1 ? 300000 - series.opening_elapsed_ms : 300000;
       let state = advanceState(loaded.state, loaded.frame, frame, elapsed);
       if (series.kind === 'PM8' && (tick - series.start_tick) % 21 === 0) state = buyEqual(sellAll(state, frame), frame.prices);
+      const contribution=funding.get(tick)??0n;
+      if(series.kind!=='PM8'&&(contribution>0n||BigInt(state.contributionsAtoms??'0')>0n)) {
+        const prior=equity(loaded.state,loaded.frame);const before=equity(state,frame);
+        const previousValue=new D(prior.numerator.toString()).div(prior.denominator.toString());
+        const currentValue=new D(before.numerator.toString()).div(before.denominator.toString());
+        const previousFactor=new D(loaded.state.timeWeightedFactor??previousValue.div('10000').toString());
+        state.timeWeightedFactor=parseRate(previousValue.gt(0)?previousFactor.mul(currentValue.div(previousValue)).toString():'0');
+        // HOLD8 buys only at account opening. Later matched inflows stay in its cash balance.
+        state.cashAtoms=signed(BigInt(state.cashAtoms)+contribution);
+        state.contributionsAtoms=signed(BigInt(state.contributionsAtoms??'0')+contribution);
+      }
       this.#append(series, frame, state, loaded.snapshot.state_hash);
       const snapshot = this.db.prepare('SELECT * FROM benchmark_snapshots WHERE market_id=? AND series_id=? AND tick_no=?').get(series.market_id, series.series_id, tick) as Snapshot;
       loaded = { state, frame, snapshot };
@@ -399,11 +428,15 @@ export class ReportingBenchmarks {
     const accrued=cashTimeInterest(state.cashAtoms,frame.dailyRate,elapsed);
     const value = addFractions(parseFraction(JSON.parse(snapshot.equity_json)),accrued);
     const amount = new D(value.numerator.toString()).div(value.denominator.toString());
+    const settled=parseFraction(JSON.parse(snapshot.equity_json));const settledAmount=new D(settled.numerator.toString()).div(settled.denominator.toString());
+    const factor=state.timeWeightedFactor===undefined?amount.div('10000'):settledAmount.gt(0)?new D(state.timeWeightedFactor).mul(amount.div(settledAmount)):new D(0);
     const marks = state.rights.filter(item => !item.attached).reduce((sum, item) => addFractions(sum, parseFraction(item.mark)), fraction(0n));
     return { kind: series.kind, startTick: series.start_tick, tickNo: snapshot.tick_no, equity: points(quantizeMoney(value, 'floor').money), cash: points(state.cashAtoms),
-      totalReturnPct: parseRate(amount.div('10000').minus(1).mul(100).toString()), fees: points(state.feesAtoms), cashInterest: points(quantizeMoney(addFractions(fraction(BigInt(state.interestAtoms),MONEY_SCALE),addFractions(parseFraction(state.interestCarry),accrued)),'floor').money),
+      initialCapital:'10000',contributions:points(state.contributionsAtoms??'0'),netInvestmentPnl:points(quantizeMoney(value,'floor').money-STANDARD_RULESET.initialCash-BigInt(state.contributionsAtoms??'0')),
+      contributionPolicy:series.kind==='PM8'?'시장 기준 포트폴리오에는 개인 납입을 반영하지 않습니다.':series.kind==='HOLD8'?'계좌 개설 시 8종목을 매수하고 보유합니다. 이후 같은 시점·금액의 납입은 현금으로 보유합니다.':'개인 계좌와 같은 시점·금액의 납입을 현금으로 보유합니다.',
+      totalReturnPct: parseRate(factor.minus(1).mul(100).toString()), fees: points(state.feesAtoms), cashInterest: points(quantizeMoney(addFractions(fraction(BigInt(state.interestAtoms),MONEY_SCALE),addFractions(parseFraction(state.interestCarry),accrued)),'floor').money),
       dividends: points(state.dividendAtoms), liquidationReceipts: points(state.liquidationAtoms), receivables: points(quantizeMoney(marks, 'floor').money),
-      openingPolicy: series.opening_policy, index: parseRate(amount.div('10').toString()) };
+      openingPolicy: series.opening_policy, index: parseRate(factor.mul('1000').toString()) };
   }
   /** Caller must supply the broker's authenticated account ID; joins repeat the owner condition. */
   owned(marketId: string, accountId: string,elapsedMs?:number): BenchmarkComparison {
